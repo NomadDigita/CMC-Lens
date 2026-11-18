@@ -4,6 +4,33 @@ const { randomUUID } = require("crypto");
 const CMC_ORIGIN = "https://pro-api.coinmarketcap.com";
 const SERVER_CACHE = new Map();
 const CACHE_MS = 60_000;
+const WINDOW_HISTORY_CACHE_MS = 10 * 60 * 1000;
+const WINDOW_HISTORY_BUDGET_PER_HOUR = 60;
+const WINDOW_HISTORY_BUDGETS = new Map();
+
+function windowHistoryClientKey(req) {
+  const headers=req.headers||{};
+  const forwarded=String(headers["x-forwarded-for"]||"").split(",")[0].trim();
+  return String(headers["x-real-ip"]||forwarded||"shared").slice(0,96);
+}
+
+function reserveWindowHistoryBudget(req, credits) {
+  const now=Date.now(),key=windowHistoryClientKey(req),cutoff=now-60*60*1000;
+  if(WINDOW_HISTORY_BUDGETS.size>2000){
+    for(const [client,entry] of WINDOW_HISTORY_BUDGETS){entry.events=entry.events.filter(event=>event.at>cutoff);if(!entry.events.length)WINDOW_HISTORY_BUDGETS.delete(client);}
+    while(WINDOW_HISTORY_BUDGETS.size>1500)WINDOW_HISTORY_BUDGETS.delete(WINDOW_HISTORY_BUDGETS.keys().next().value);
+  }
+  const entry=WINDOW_HISTORY_BUDGETS.get(key)||{events:[]};
+  entry.events=entry.events.filter(event=>event.at>cutoff);
+  const spent=entry.events.reduce((sum,event)=>sum+event.credits,0);
+  if(spent+credits>WINDOW_HISTORY_BUDGET_PER_HOUR){
+    const oldest=entry.events[0]?.at||now;
+    return {allowed:false,retryAfterSeconds:Math.max(1,Math.ceil((oldest+60*60*1000-now)/1000))};
+  }
+  entry.events.push({at:now,credits});
+  WINDOW_HISTORY_BUDGETS.set(key,entry);
+  return {allowed:true};
+}
 
 function reply(res, status, body, headers = {}) {
   if (Array.isArray(body?.sourceReceipts)) {
@@ -372,7 +399,7 @@ async function liveWindowHistory(ids, timeStart, timeEnd, receiptSink=[]) {
     time_start:timeStart,
     time_end:timeEnd,
     interval:"24h",
-    aux:"search_interval,quote_timestamp",
+    aux:"search_interval",
     convert:"USD",
     skip_invalid:"true"
   },12000,receiptSink);
@@ -455,8 +482,21 @@ module.exports = async function handler(req, res) {
       if(ids.length<2||ids.length>8||ids.some(id=>!/^\d{1,12}$/.test(id))||new Set(ids).size!==ids.length)return reply(res,400,{error:"INVALID_WINDOW_ASSETS",sourceReceipts});
       if(!Number.isFinite(startDate.getTime())||!Number.isFinite(endDate.getTime())||startDate>=endDate||endDate.getTime()>now+60_000)return reply(res,400,{error:"INVALID_WINDOW",sourceReceipts});
       if((endDate-startDate)>366*24*60*60*1000)return reply(res,400,{error:"WINDOW_TOO_WIDE",sourceReceipts});
-      const series=await liveWindowHistory(ids,startDate.toISOString(),endDate.toISOString(),sourceReceipts);
-      return reply(res,200,{mode:"live",retrievedAt:new Date().toISOString(),source:{provider:"CoinMarketCap",endpoint:"/v3/cryptocurrency/quotes/historical",interval:"24h"},timeStart:startDate.toISOString(),timeEnd:endDate.toISOString(),series,sourceReceipts});
+      const canonicalIds=[...ids].sort();
+      const startIso=startDate.toISOString(),endIso=endDate.toISOString();
+      const cacheKey="window-history:"+canonicalIds.join(",")+":"+startIso+":"+endIso;
+      const cached=getCached(cacheKey,WINDOW_HISTORY_CACHE_MS);
+      if(cached){
+        sourceReceipts.push(...cachedSourceReceipts(cached.sourceReceipts));
+        return reply(res,200,{mode:"live",retrievedAt:new Date().toISOString(),source:{provider:"CoinMarketCap",endpoint:"/v3/cryptocurrency/quotes/historical",interval:"24h",cache:"hit"},timeStart:startIso,timeEnd:endIso,series:cached.series,sourceReceipts});
+      }
+      const requestedDays=Math.ceil((endDate-startDate)/(24*60*60*1000))+1;
+      const estimatedCredits=Math.max(1,Math.ceil(requestedDays*ids.length/100));
+      const budget=reserveWindowHistoryBudget(req,estimatedCredits);
+      if(!budget.allowed)return reply(res,429,{error:"CMC_RATE_LIMITED",retryable:true,retryAfterSeconds:budget.retryAfterSeconds,sourceReceipts},{"Retry-After":String(budget.retryAfterSeconds)});
+      const series=await liveWindowHistory(canonicalIds,startIso,endIso,sourceReceipts);
+      setCached(cacheKey,{series,sourceReceipts});
+      return reply(res,200,{mode:"live",retrievedAt:new Date().toISOString(),source:{provider:"CoinMarketCap",endpoint:"/v3/cryptocurrency/quotes/historical",interval:"24h",cache:"miss"},timeStart:startIso,timeEnd:endIso,series,sourceReceipts});
     }
     if (view !== "overview") return reply(res, 400, { error: "INVALID_VIEW", sourceReceipts });
     return reply(res, 200, await liveOverview(sourceReceipts));
