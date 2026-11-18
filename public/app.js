@@ -677,6 +677,8 @@ function reconcileThesisHistory(localTheses,remoteTheses,evidenceRows,reviewRows
     const localBaseline=thesis.baselineSnapshot||null;
     if(remote?.baseline_snapshot_id&&localBaselineId&&String(remote.baseline_snapshot_id)!==String(localBaselineId)&&localBaseline){thesis.additionalBaselines||=[];if(!thesis.additionalBaselines.some(item=>item.id===localBaselineId))thesis.additionalBaselines.push({id:localBaselineId,baselineSnapshot:localBaseline});}
     if(remote?.baseline_snapshot_id){thesis.baselineSnapshotId=remote.baseline_snapshot_id;if(baseline?.source_payload?.baseline)thesis.baselineSnapshot=baseline.source_payload.baseline;else if(String(remote.baseline_snapshot_id)!==String(localBaselineId))thesis.baselineSnapshot=null;}else thesis.baselineSnapshotId||=null;
+    thesis.additionalBaselines ||= [];
+    for(const snapshot of snapshotRows||[]){if(snapshot.thesis_id!==thesis.id||snapshot.snapshot_kind!=="baseline"||snapshot.id===thesis.baselineSnapshotId)continue;const baselineSnapshot=snapshot.source_payload?.baseline||null;if(!baselineSnapshot||thesis.additionalBaselines.some(item=>item.id===snapshot.id))continue;thesis.additionalBaselines.push({id:snapshot.id,baselineSnapshot});}
     if(!thesis.updatedAt&&remote?.updated_at)thesis.updatedAt=remote.updated_at;
     const evidence=[...(thesis.evidence||[])];
     const evidenceIds=new Set(evidence.map(item=>item.id).filter(Boolean));
@@ -714,8 +716,9 @@ async function syncWorkspace(){
   const assertCurrent=()=>{if(auth.syncJob!==job||auth.syncEpoch!==epoch||auth.user?.id!==owner||job.controller.signal.aborted)throw new DOMException("Workspace sync was superseded.","AbortError");};
   const request=(path,options={})=>{assertCurrent();return sbRequest(path,{...options,token,signal:job.controller.signal});};
   const insertOnly="resolution=ignore-duplicates,return=minimal";
+  const fetchAllRows=async path=>{const all=[];for(let offset=0;;offset+=500){const page=await request(`${path}${path.includes("?")?"&":"?"}limit=500&offset=${offset}`);if(Array.isArray(page))all.push(...page);if(!Array.isArray(page)||page.length<500)break;}return all;};
   try{
-    const remoteAtStart=await request(`/rest/v1/theses?select=*&owner_id=eq.${encodeURIComponent(owner)}&order=created_at.desc`);
+    const remoteAtStart=await fetchAllRows(`/rest/v1/theses?select=*&owner_id=eq.${encodeURIComponent(owner)}&order=created_at.desc,id.desc`);
     const remoteAtStartById=new Map((remoteAtStart||[]).map(row=>[row.id,row]));
     for(const t of theses){
       const syncChoice=resolveThesisSyncConflict(t,remoteAtStartById.get(t.id));
@@ -731,19 +734,19 @@ async function syncWorkspace(){
       if(t.condition){t.conditionId ||= crypto.randomUUID();await request("/rest/v1/thesis_conditions?on_conflict=id",{method:"POST",body:{id:t.conditionId,owner_id:owner,thesis_id:t.id,condition_type:"qualitative",metric_key:"user_defined",effect:"weaken",description:t.condition,active:true},prefer:"resolution=merge-duplicates,return=minimal"});}
       for(const review of t.reviews||[]){review.id ||= crypto.randomUUID();review.snapshotId ||= crypto.randomUUID();await request("/rest/v1/thesis_snapshots?on_conflict=id",{method:"POST",body:{id:review.snapshotId,owner_id:owner,thesis_id:t.id,snapshot_kind:"manual_review",source_provider:review.snapshot?.sourceProvider||"unavailable",source_endpoint:review.snapshot?.sourceEndpoint||null,source_observed_at:review.snapshot?.sourceObservedAt??null,captured_at:review.snapshot?.capturedAt||review.date,source_payload:{assetSymbol:t.assetSymbol||null,retrievedAt:review.snapshot?.retrievedAt??null,review:review.snapshot||null},derived_metrics:review.snapshot?.derivedMetrics||{},coverage:review.snapshot?.coverage||"unavailable",limitations:review.snapshot?.limitations||"No fresh source snapshot was captured at review time."},prefer:insertOnly});await request("/rest/v1/thesis_reviews?on_conflict=id",{method:"POST",body:{id:review.id,owner_id:owner,thesis_id:t.id,snapshot_id:review.snapshotId,reviewed_at:review.date,result_label:review.result,summary:review.note||""},prefer:insertOnly});}
     }
-    const remote=await request(`/rest/v1/theses?select=*&owner_id=eq.${encodeURIComponent(owner)}&order=created_at.desc`);
+    const remote=await fetchAllRows(`/rest/v1/theses?select=*&owner_id=eq.${encodeURIComponent(owner)}&order=created_at.desc,id.desc`);
     const history={evidence:[],reviews:[],snapshots:[],conditions:[]};
     const remoteRows=remote||[];
     for(let offset=0;offset<remoteRows.length;offset+=50){
       const group=remoteRows.slice(offset,offset+50);
       const ids=group.map(row=>row.id).filter(Boolean).join(",");
       if(!ids)continue;
-      const filter=`/rest/v1/evidence_items?select=*&owner_id=eq.${encodeURIComponent(owner)}&thesis_id=in.(${ids})`;
+      const filter=`/rest/v1/evidence_items?select=*&owner_id=eq.${encodeURIComponent(owner)}&thesis_id=in.(${ids})&order=created_at.asc`;
       const [evidence,reviews,snapshots,conditions]=await Promise.all([
-        request(filter),
-        request(`/rest/v1/thesis_reviews?select=*&owner_id=eq.${encodeURIComponent(owner)}&thesis_id=in.(${ids})`),
-        request(`/rest/v1/thesis_snapshots?select=*&owner_id=eq.${encodeURIComponent(owner)}&thesis_id=in.(${ids})&order=captured_at.asc`),
-        request(`/rest/v1/thesis_conditions?select=*&owner_id=eq.${encodeURIComponent(owner)}&thesis_id=in.(${ids})&active=eq.true`)
+        fetchAllRows(filter),
+        fetchAllRows(`/rest/v1/thesis_reviews?select=*&owner_id=eq.${encodeURIComponent(owner)}&thesis_id=in.(${ids})&order=reviewed_at.asc`),
+        fetchAllRows(`/rest/v1/thesis_snapshots?select=*&owner_id=eq.${encodeURIComponent(owner)}&thesis_id=in.(${ids})&order=captured_at.asc`),
+        fetchAllRows(`/rest/v1/thesis_conditions?select=*&owner_id=eq.${encodeURIComponent(owner)}&thesis_id=in.(${ids})&active=eq.true&order=created_at.asc`)
       ]);
       history.evidence.push(...(evidence||[]));history.reviews.push(...(reviews||[]));history.snapshots.push(...(snapshots||[]));history.conditions.push(...(conditions||[]));
     }
