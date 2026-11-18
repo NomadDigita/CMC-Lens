@@ -5,31 +5,24 @@ const CMC_ORIGIN = "https://pro-api.coinmarketcap.com";
 const SERVER_CACHE = new Map();
 const CACHE_MS = 60_000;
 const WINDOW_HISTORY_CACHE_MS = 10 * 60 * 1000;
-const WINDOW_HISTORY_BUDGET_PER_HOUR = 60;
-const WINDOW_HISTORY_BUDGETS = new Map();
 
-function windowHistoryClientKey(req) {
-  const headers=req.headers||{};
-  const forwarded=String(headers["x-forwarded-for"]||"").split(",")[0].trim();
-  return String(headers["x-real-ip"]||forwarded||"shared").slice(0,96);
-}
-
-function reserveWindowHistoryBudget(req, credits) {
-  const now=Date.now(),key=windowHistoryClientKey(req),cutoff=now-60*60*1000;
-  if(WINDOW_HISTORY_BUDGETS.size>2000){
-    for(const [client,entry] of WINDOW_HISTORY_BUDGETS){entry.events=entry.events.filter(event=>event.at>cutoff);if(!entry.events.length)WINDOW_HISTORY_BUDGETS.delete(client);}
-    while(WINDOW_HISTORY_BUDGETS.size>1500)WINDOW_HISTORY_BUDGETS.delete(WINDOW_HISTORY_BUDGETS.keys().next().value);
-  }
-  const entry=WINDOW_HISTORY_BUDGETS.get(key)||{events:[]};
-  entry.events=entry.events.filter(event=>event.at>cutoff);
-  const spent=entry.events.reduce((sum,event)=>sum+event.credits,0);
-  if(spent+credits>WINDOW_HISTORY_BUDGET_PER_HOUR){
-    const oldest=entry.events[0]?.at||now;
-    return {allowed:false,retryAfterSeconds:Math.max(1,Math.ceil((oldest+60*60*1000-now)/1000))};
-  }
-  entry.events.push({at:now,credits});
-  WINDOW_HISTORY_BUDGETS.set(key,entry);
-  return {allowed:true};
+async function reserveSharedWindowHistoryBudget(token, credits) {
+  let base=String(process.env.SUPABASE_URL||"");
+  while(base.endsWith("/"))base=base.slice(0,-1);
+  const publishableKey=process.env.SUPABASE_PUBLISHABLE_KEY;
+  if(!base||!publishableKey)return {error:"CMC_HISTORY_BUDGET_UNAVAILABLE"};
+  try{
+    const response=await fetch(base+"/functions/v1/reserve-cmc-history",{
+      method:"POST",
+      headers:{apikey:publishableKey,Authorization:"Bearer "+token,"Content-Type":"application/json",Accept:"application/json"},
+      body:JSON.stringify({credits}),
+      signal:AbortSignal.timeout(6500)
+    });
+    const payload=await response.json().catch(()=>({}));
+    if(response.status===401||response.status===403)return {error:"CMC_HISTORY_AUTH_REQUIRED"};
+    if(!response.ok)return {error:"CMC_HISTORY_BUDGET_UNAVAILABLE"};
+    return {allowed:payload.allowed===true,retryAfterSeconds:Number(payload.retryAfterSeconds)||0,error:payload.error||null};
+  }catch{return {error:"CMC_HISTORY_BUDGET_UNAVAILABLE"};}
 }
 
 function reply(res, status, body, headers = {}) {
@@ -490,10 +483,15 @@ module.exports = async function handler(req, res) {
         sourceReceipts.push(...cachedSourceReceipts(cached.sourceReceipts));
         return reply(res,200,{mode:"live",retrievedAt:new Date().toISOString(),source:{provider:"CoinMarketCap",endpoint:"/v3/cryptocurrency/quotes/historical",interval:"24h",cache:"hit"},timeStart:startIso,timeEnd:endIso,series:cached.series,sourceReceipts});
       }
+      const authParts=String(req.headers?.authorization||"").trim().split(/\s+/);
+      const token=authParts[0]?.toLowerCase()==="bearer"?authParts.slice(1).join(" "):null;
+      if(!token)return reply(res,401,{error:"CMC_HISTORY_AUTH_REQUIRED",sourceReceipts});
       const requestedDays=Math.ceil((endDate-startDate)/(24*60*60*1000))+1;
-      const estimatedCredits=Math.max(1,Math.ceil(requestedDays*ids.length/100));
-      const budget=reserveWindowHistoryBudget(req,estimatedCredits);
-      if(!budget.allowed)return reply(res,429,{error:"CMC_RATE_LIMITED",retryable:true,retryAfterSeconds:budget.retryAfterSeconds,sourceReceipts},{"Retry-After":String(budget.retryAfterSeconds)});
+      const estimatedCredits=Math.max(1,Math.ceil(requestedDays*canonicalIds.length/100));
+      const budget=await reserveSharedWindowHistoryBudget(token,estimatedCredits);
+      if(budget.error==="CMC_HISTORY_AUTH_REQUIRED")return reply(res,401,{error:budget.error,sourceReceipts});
+      if(budget.error)return reply(res,503,{error:"CMC_HISTORY_BUDGET_UNAVAILABLE",retryable:true,sourceReceipts});
+      if(!budget.allowed)return reply(res,429,{error:"CMC_HISTORY_BUDGET_EXHAUSTED",retryable:true,retryAfterSeconds:budget.retryAfterSeconds,sourceReceipts},{"Retry-After":String(budget.retryAfterSeconds)});
       const series=await liveWindowHistory(canonicalIds,startIso,endIso,sourceReceipts);
       setCached(cacheKey,{series,sourceReceipts});
       return reply(res,200,{mode:"live",retrievedAt:new Date().toISOString(),source:{provider:"CoinMarketCap",endpoint:"/v3/cryptocurrency/quotes/historical",interval:"24h",cache:"miss"},timeStart:startIso,timeEnd:endIso,series,sourceReceipts});
