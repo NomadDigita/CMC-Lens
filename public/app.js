@@ -676,8 +676,7 @@ function reconcileThesisHistory(localTheses,remoteTheses,evidenceRows,reviewRows
     const localBaselineId=thesis.baselineSnapshotId||null;
     const localBaseline=thesis.baselineSnapshot||null;
     if(remote?.baseline_snapshot_id&&localBaselineId&&String(remote.baseline_snapshot_id)!==String(localBaselineId)&&localBaseline){thesis.additionalBaselines||=[];if(!thesis.additionalBaselines.some(item=>item.id===localBaselineId))thesis.additionalBaselines.push({id:localBaselineId,baselineSnapshot:localBaseline});}
-    if(remote?.baseline_snapshot_id)thesis.baselineSnapshotId=remote.baseline_snapshot_id;else thesis.baselineSnapshotId||=null;
-    if(baseline?.source_payload?.baseline)thesis.baselineSnapshot=baseline.source_payload.baseline;
+    if(remote?.baseline_snapshot_id){thesis.baselineSnapshotId=remote.baseline_snapshot_id;if(baseline?.source_payload?.baseline)thesis.baselineSnapshot=baseline.source_payload.baseline;else if(String(remote.baseline_snapshot_id)!==String(localBaselineId))thesis.baselineSnapshot=null;}else thesis.baselineSnapshotId||=null;
     if(!thesis.updatedAt&&remote?.updated_at)thesis.updatedAt=remote.updated_at;
     const evidence=[...(thesis.evidence||[])];
     const evidenceIds=new Set(evidence.map(item=>item.id).filter(Boolean));
@@ -721,7 +720,7 @@ async function syncWorkspace(){
     for(const t of theses){
       const syncChoice=resolveThesisSyncConflict(t,remoteAtStartById.get(t.id));
       t.baselineSnapshotId ||= crypto.randomUUID();
-      const thesis={id:t.id,owner_id:owner,title:t.title,question:"",thesis_text:t.view||"",status:t.status==="reviewed"?"reviewed":"open",horizon_start:t.createdAt,review_at:t.reviewAt||null,primary_asset_id:t.assetId||null,primary_asset_symbol:t.assetSymbol||null,privacy:"private",created_at:t.createdAt,updated_at:t.updatedAt||t.lastReviewedAt||t.createdAt};
+      const thesis={id:t.id,owner_id:owner,title:t.title,question:"",thesis_text:t.view||"",status:["reviewed","due","archived"].includes(t.status)?t.status:"open",horizon_start:t.createdAt,review_at:t.reviewAt||null,primary_asset_id:t.assetId||null,primary_asset_symbol:t.assetSymbol||null,privacy:"private",created_at:t.createdAt,updated_at:t.updatedAt||t.lastReviewedAt||t.createdAt};
       if(syncChoice!=="remote")await request("/rest/v1/theses?on_conflict=id",{method:"POST",body:thesis,prefer:"resolution=merge-duplicates,return=minimal"});
       const source=t.evidence?.[0]?.source||"Demo dataset";
       const snapshot={id:t.baselineSnapshotId,owner_id:owner,thesis_id:t.id,snapshot_kind:"baseline",source_provider:t.baselineSnapshot?.sourceProvider||(source==="CoinMarketCap"?"coinmarketcap":"demo"),source_endpoint:t.baselineSnapshot?.sourceEndpoint??(source==="CoinMarketCap"?"/v3/cryptocurrency/quotes/latest":null),source_observed_at:t.baselineSnapshot?.sourceObservedAt??null,captured_at:t.baselineSnapshot?.capturedAt||t.createdAt,source_payload:{evidence:t.evidence||[],baseline:t.baselineSnapshot||null},derived_metrics:{assetSymbol:t.assetSymbol||null,peerContext:t.evidence?.find(x=>x.label==="Research context")?.value||null},coverage:source==="CoinMarketCap"?"complete":"partial",limitations:source==="CoinMarketCap"?"User-authored interpretation; source data is a compacted application snapshot.":"Illustrative demo values, not live market evidence."};
