@@ -30,3 +30,23 @@ html[data-theme="light"] .sun-icon{display:none}html[data-theme="light"] .moon-i
 .receipt-summary summary{cursor:pointer}
 .receipt-summary pre{margin:9px 0 0;padding:10px;border-radius:10px;background:var(--surface);color:var(--text-2);font:10px/1.6 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere}
 @media(max-width:560px){.receipt-card{padding:12px}.receipt-times{grid-template-columns:1fr}.receipt-head{flex-wrap:wrap}}
+
+.matched-window-section{display:grid;gap:12px}
+.matched-window{min-width:0;border:1px solid var(--line);border-radius:16px;background:var(--surface-2);padding:16px;overflow:hidden}
+.window-chart-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.window-chart-heading div{display:grid;gap:5px}
+.window-chart-heading strong{font-size:13px;color:var(--text)}
+.window-chart-heading span,.window-chart-heading>span{font-size:10px;color:var(--muted);font-family:var(--mono)}
+.window-chart-svg{display:block;width:100%;min-width:540px;height:auto;margin-top:10px;overflow:visible}
+.window-grid{stroke:var(--line);stroke-width:1}
+.window-baseline{stroke:var(--muted);stroke-width:1;stroke-dasharray:4 4;opacity:.75}
+.window-axis-label{fill:var(--muted);font:10px var(--mono)}
+.window-legend{display:flex;flex-wrap:wrap;gap:8px 14px;margin-top:10px}
+.window-legend-item{display:inline-flex;align-items:center;gap:6px;color:var(--text-2);font-size:11px}
+.window-legend-item i{width:8px;height:8px;border-radius:50%}
+.window-coverage{display:grid;gap:0;margin-top:14px;border-top:1px solid var(--line)}
+.window-coverage-row{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line-soft);font-size:10px;color:var(--text-2)}
+.window-coverage-row span:last-child{text-align:right;color:var(--muted);font-family:var(--mono)}
+.window-method{margin:10px 0 0;color:var(--muted);font-size:10px;line-height:1.6}
+.window-empty{padding:14px;border:1px dashed var(--line);border-radius:12px;color:var(--muted);font-size:12px;line-height:1.6}
+@media(max-width:560px){.matched-window{padding:12px}.window-chart-heading{display:grid}.window-coverage-row{display:grid;gap:4px}.window-coverage-row span:last-child{text-align:left}}

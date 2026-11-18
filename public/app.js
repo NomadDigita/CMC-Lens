@@ -293,6 +293,102 @@ function savedComparisonMarkup(comparison) {
   return `<div class="detail-section" data-saved-comparison><h3>SAVED COMPARISON · ${escapeHtml(comparison.periodLabel||comparison.period||"Original period")}</h3><div class="detail-note">Captured ${escapeHtml(comparison.capturedAt||"")} · ${escapeHtml(comparison.currency||"USD")} · ${escapeHtml(comparison.sourceProvider||"source unavailable")}. ${escapeHtml(coverageDetail)} ${escapeHtml(historyStatus)}. Source observed ${escapeHtml(comparison.sourceObservedAt||"time unavailable")} · retrieved ${escapeHtml(comparison.retrievedAt||"time unavailable")}.</div><div class="detail-evidence">${rows}</div></div>`;
 }
 
+function windowUnavailableMessage(status){
+  if(status==="not_comparable")return "A live CMC quote and a CMC-captured comparison baseline are required.";
+  if(status==="window_too_wide")return "This saved baseline is outside the 366-day historical window supported here.";
+  if(status==="plan_unavailable")return "This CMC plan did not return historical quotes. Point-in-time quote review is still available.";
+  if(status==="rate_limited")return "CMC rate-limited the historical request. No points were estimated.";
+  if(status==="budget_exhausted")return "The shared historical replay budget is used for this hour. Try again after it resets.";
+  if(status==="budget_unavailable")return "The shared historical request budget is unavailable right now. No CMC request was made.";
+  if(status==="auth_required")return "Sign in to load matched CMC history. Your point-quote replay remains available.";
+  if(status==="insufficient_assets")return "At least two valid saved CMC asset IDs are needed for a matched window.";
+  if(status==="demo_mode")return "This environment is using demo data, so no CMC historical request was made.";
+  if(status==="no_points")return "CMC returned no usable historical points for this saved window. No values were filled in.";
+  return "The historical request is unavailable right now. Saved point-quote replay remains available.";
+}
+
+async function captureMatchedWindowReplay(comparison,items,endAt,receiptSink,comparisonReady){
+  const startAt=comparison?.capturedAt||null;
+  if(!comparisonReady||!startAt)return {status:"not_comparable",startAt,endAt,interval:"24h",assets:[]};
+  const startMs=Date.parse(startAt),endMs=Date.parse(endAt);
+  if(!Number.isFinite(startMs)||!Number.isFinite(endMs)||endMs<=startMs)return {status:"not_comparable",startAt,endAt,interval:"24h",assets:[]};
+  if(endMs-startMs>366*24*60*60*1000)return {status:"window_too_wide",startAt,endAt,interval:"24h",assets:[]};
+  const ids=items.filter(item=>/^\d{1,12}$/.test(String(item.id))).map(item=>String(item.id));
+  if(ids.length<2)return {status:"insufficient_assets",startAt,endAt,interval:"24h",assets:[]};
+  const token=state.auth.session?.access_token;
+  if(!token)return {status:"auth_required",startAt,endAt,interval:"24h",assets:[]};
+  let response,body;
+  try{
+    response=await fetch("/api/market?view=window-history&ids="+encodeURIComponent(ids.join(","))+"&start="+encodeURIComponent(new Date(startMs).toISOString())+"&end="+encodeURIComponent(new Date(endMs).toISOString()),{headers:{Accept:"application/json",Authorization:"Bearer "+token}});
+    body=await response.json().catch(()=>({}));
+    if(Array.isArray(body.sourceReceipts))receiptSink.push(...body.sourceReceipts);
+  }catch{return {status:"unavailable",startAt,endAt,interval:"24h",assets:[]};}
+  if(!response.ok){
+    const status=body.error==="WINDOW_TOO_WIDE"?"window_too_wide":body.error==="CMC_ENTITLEMENT_OR_KEY"?"plan_unavailable":body.error==="CMC_RATE_LIMITED"?"rate_limited":body.error==="CMC_HISTORY_BUDGET_EXHAUSTED"?"budget_exhausted":body.error==="CMC_HISTORY_BUDGET_UNAVAILABLE"?"budget_unavailable":body.error==="CMC_HISTORY_AUTH_REQUIRED"?"auth_required":"unavailable";
+    return {status,startAt,endAt,interval:"24h",assets:[]};
+  }
+  if(body.mode!=="live")return {status:"demo_mode",startAt,endAt,interval:"24h",assets:[]};
+  const expectedDays=Math.max(1,Math.ceil((endMs-startMs)/(24*60*60*1000)));
+  const assets=items.map(item=>{
+    const base=Number(item.baselinePrice);
+    const raw=Array.isArray(body.series?.[item.id])?body.series[item.id]:[];
+    const historical=base>0?raw.filter(point=>Date.parse(point.timestamp)>startMs&&Date.parse(point.timestamp)<=endMs&&hasNumericValue(point.price)&&Number(point.price)>0).sort((a,b)=>Date.parse(a.timestamp)-Date.parse(b.timestamp)):[];
+    const normalized=[{timestamp:new Date(startMs).toISOString(),price:base,index:100,kind:"saved baseline"}];
+    for(const point of historical){
+      const index=(Number(point.price)/base)*100;
+      if(Number.isFinite(index))normalized.push({timestamp:point.timestamp,price:Number(point.price),index,kind:"CMC history"});
+    }
+    const latestAt=Date.parse(item.sourceObservedAt||"");
+    if(base>0&&hasNumericValue(item.currentPrice)&&Number(item.currentPrice)>0&&latestAt>startMs&&latestAt<=endMs){
+      const index=(Number(item.currentPrice)/base)*100;
+      if(Number.isFinite(index)&&!normalized.some(point=>point.timestamp===new Date(latestAt).toISOString()))normalized.push({timestamp:new Date(latestAt).toISOString(),price:Number(item.currentPrice),index,kind:"CMC latest"});
+    }
+    normalized.sort((a,b)=>Date.parse(a.timestamp)-Date.parse(b.timestamp));
+    return {id:String(item.id),symbol:item.symbol||"",name:item.name||"",baselinePrice:base>0?base:null,historyPoints:historical.length,expectedPoints:expectedDays,coveragePct:Math.min(100,Math.floor((historical.length/expectedDays)*100)),points:normalized};
+  });
+  const loaded=assets.filter(asset=>asset.historyPoints>0).length;
+  const gaps=assets.some(asset=>asset.historyPoints<asset.expectedPoints);
+  return {status:loaded===0?"no_points":loaded<assets.length||gaps?"partial":"complete",startAt:new Date(startMs).toISOString(),endAt:new Date(endMs).toISOString(),interval:"24h",expectedDays,assets};
+}
+
+function matchedWindowChartMarkup(windowReplay){
+  if(!windowReplay)return "";
+  const assets=(windowReplay.assets||[]).filter(asset=>asset.historyPoints>0&&asset.points?.length>1);
+  if(!assets.length)return '<div class="window-empty">'+escapeHtml(windowUnavailableMessage(windowReplay.status))+'</div>';
+  const width=760,height=286,left=54,right=18,top=18,bottom=34;
+  const start=Date.parse(windowReplay.startAt),end=Date.parse(windowReplay.endAt);
+  const values=assets.flatMap(asset=>asset.points.map(point=>point.index)).filter(Number.isFinite);
+  let min=Math.min(100,...values),max=Math.max(100,...values);
+  if(max-min<8){min-=4;max+=4;}else{const pad=(max-min)*.12;min-=pad;max+=pad;}
+  const x=timestamp=>left+((Date.parse(timestamp)-start)/Math.max(1,end-start))*(width-left-right);
+  const y=value=>top+((max-value)/Math.max(1,max-min))*(height-top-bottom);
+  const palette=["#c8f35a","#9ab6ff","#f28e82","#f1bc73","#d19aff","#55d6be","#ff8ec7","#aab5ad"];
+  let svg='<svg class="window-chart-svg" viewBox="0 0 '+width+' '+height+'" role="img" aria-label="Daily CMC quote paths, each indexed to 100 at the saved baseline">';
+  for(let tick=0;tick<4;tick++){
+    const value=min+(max-min)*tick/3,yy=y(value);
+    svg+='<line x1="'+left+'" y1="'+yy.toFixed(2)+'" x2="'+(width-right)+'" y2="'+yy.toFixed(2)+'" class="window-grid"/>';
+    svg+='<text x="'+(left-8)+'" y="'+(yy+4).toFixed(2)+'" text-anchor="end" class="window-axis-label">'+value.toFixed(0)+'</text>';
+  }
+  svg+='<line x1="'+left+'" y1="'+y(100).toFixed(2)+'" x2="'+(width-right)+'" y2="'+y(100).toFixed(2)+'" class="window-baseline"/>';
+  for(let index=0;index<assets.length;index++){
+    const asset=assets[index],color=palette[index%palette.length];
+    const segments=[];let segment=[];
+    for(const point of asset.points){
+      if(segment.length&&Date.parse(point.timestamp)-Date.parse(segment[segment.length-1].timestamp)>36*60*60*1000){segments.push(segment);segment=[];}
+      segment.push(point);
+    }
+    if(segment.length)segments.push(segment);
+    svg+=segments.map(points=>'<path d="'+points.map((point,pointIndex)=>(pointIndex?"L":"M")+x(point.timestamp).toFixed(2)+" "+y(point.index).toFixed(2)).join(" ")+'" fill="none" stroke="'+color+'" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>').join("");
+    const last=asset.points[asset.points.length-1];
+    svg+=asset.points.map(point=>'<circle cx="'+x(point.timestamp).toFixed(2)+'" cy="'+y(point.index).toFixed(2)+'" r="'+(point===last?"3.5":"1.5")+'" fill="'+color+'"/>').join("");
+  }
+  svg+='<text x="'+left+'" y="'+(height-7)+'" class="window-axis-label">'+escapeHtml(safeDate(windowReplay.startAt))+'</text>';
+  svg+='<text x="'+(width-right)+'" y="'+(height-7)+'" text-anchor="end" class="window-axis-label">'+escapeHtml(safeDate(windowReplay.endAt))+'</text></svg>';
+  const legend=assets.map((asset,index)=>'<span class="window-legend-item"><i style="background:'+palette[index%palette.length]+'"></i>'+escapeHtml(asset.symbol||asset.name)+'</span>').join("");
+  const coverage=(windowReplay.assets||[]).map(asset=>'<div class="window-coverage-row"><span>'+escapeHtml(asset.symbol||asset.name)+'</span><span>'+asset.historyPoints+'/'+asset.expectedPoints+' daily samples · '+asset.coveragePct+'% · '+Math.max(0,asset.expectedPoints-asset.historyPoints)+' gaps</span></div>').join("");
+  return '<div class="matched-window"><div class="window-chart-heading"><div><strong>Matched window · indexed to 100</strong><span>'+escapeHtml(safeDate(windowReplay.startAt))+' → '+escapeHtml(safeDate(windowReplay.endAt))+' · CMC 24h snapshots</span></div><span>Daily points only</span></div>'+svg+'<div class="window-legend">'+legend+'</div><div class="window-coverage">'+coverage+'</div><p class="window-method">Each path starts from its immutable saved quote. Only returned CMC observations are plotted; skipped intervals remain visible as gaps in coverage and are not estimated.</p></div>';
+}
+
 async function captureComparisonReplay(t,isLive,primaryResponse){
   const comparison=t.baselineSnapshot?.comparison;
   if(!comparison||!Array.isArray(comparison.assets)||comparison.assets.length<2)return null;
@@ -322,8 +418,10 @@ async function captureComparisonReplay(t,isLive,primaryResponse){
   for(const item of items){if(item.status==="live"&&item.priceReturnPct!==null&&benchmark?.status==="live"&&benchmark.priceReturnPct!==null)item.relativeToBenchmarkPp=item.priceReturnPct-benchmark.priceReturnPct;}
   const relatives=items.filter(item=>item.id!==benchmarkId&&item.relativeToBenchmarkPp!==null).map(item=>item.relativeToBenchmarkPp);
   const availableAssets=items.filter(item=>item.status==="live").length;
+  const capturedAt=new Date().toISOString();
+  const matchedWindow=await captureMatchedWindowReplay(comparison,items,capturedAt,receiptBatch,comparisonReady);
   state.latestSourceReceipts=[...new Map(receiptBatch.map(receipt=>[receipt.requestId,receipt])).values()];
-  return {sourceProvider:availableAssets?"coinmarketcap":"unavailable",sourceEndpoint:"/v3/cryptocurrency/quotes/latest",capturedAt:new Date().toISOString(),baselineCapturedAt:comparison.capturedAt||t.baselineSnapshot?.capturedAt||null,benchmarkId,benchmarkSymbol:benchmarkAsset?.symbol||t.assetSymbol||"",selectedAssets:comparison.assets.length,replayedAssets:assets.length,availableAssets,status:!comparisonReady?"not_comparable":availableAssets===assets.length?"complete":availableAssets?"partial":"unavailable",cohortRelativePct:relatives.length?relatives.reduce((sum,value)=>sum+value,0)/relatives.length:null,items};
+  return {sourceProvider:availableAssets?"coinmarketcap":"unavailable",sourceEndpoint:"/v3/cryptocurrency/quotes/latest",capturedAt,baselineCapturedAt:comparison.capturedAt||t.baselineSnapshot?.capturedAt||null,benchmarkId,benchmarkSymbol:benchmarkAsset?.symbol||t.assetSymbol||"",selectedAssets:comparison.assets.length,replayedAssets:assets.length,availableAssets,status:!comparisonReady?"not_comparable":availableAssets===assets.length?"complete":availableAssets?"partial":"unavailable",cohortRelativePct:relatives.length?relatives.reduce((sum,value)=>sum+value,0)/relatives.length:null,items,matchedWindow};
 }
 
 function comparisonReplayMarkup(replay){
@@ -338,8 +436,11 @@ function comparisonReplayMarkup(replay){
   }).join("");
   const status=replay.status==="complete"?"All saved assets refreshed":replay.status==="partial"?"Partial refresh; unavailable assets remain blank":replay.status==="not_comparable"?"Replay requires live CMC data and a CMC-captured baseline":"No matched live CMC quotes were available";
   const cohort=replay.cohortRelativePct===null?"The relative cohort return is unavailable.":`Equal-weight mean return of refreshed non-benchmark assets versus ${escapeHtml(replay.benchmarkSymbol||"the primary asset")}: ${fmtPercent(replay.cohortRelativePct)} percentage points.`;
-  return `<div class="detail-section" data-comparison-replay><h3>COMPARISON REPLAY · RELATIVE VS ${escapeHtml(replay.benchmarkSymbol||"PRIMARY ASSET")}</h3><div class="detail-note">${status} · ${replay.availableAssets}/${replay.replayedAssets} refreshed. Each return uses the saved baseline quote and the validated live CMC quote. Relative values are percentage-point differences versus the primary asset; the cohort summary is equal-weighted. ${cohort} Missing values are not imputed. This is descriptive evidence, not a prediction.</div><div class="detail-evidence">${rows}</div></div>`;
+  const window=replay.matchedWindow;
+  const windowStatus=window?.status==="complete"?"Historical path loaded for every saved asset":window?.status==="partial"?"Historical path has gaps or missing assets":windowUnavailableMessage(window?.status);
+  return `<div class="detail-section" data-comparison-replay><h3>COMPARISON REPLAY · RELATIVE VS ${escapeHtml(replay.benchmarkSymbol||"PRIMARY ASSET")}</h3><div class="detail-note">${status} · ${replay.availableAssets}/${replay.replayedAssets} refreshed. Each return uses the saved baseline quote and the validated live CMC quote. Relative values are percentage-point differences versus the primary asset; the cohort summary is equal-weighted. ${cohort} Missing values are not imputed. This is descriptive evidence, not a prediction.</div><div class="detail-section matched-window-section"><h3>BASELINE TO REVIEW · SAME CMC WINDOW</h3><div class="detail-note">${escapeHtml(windowStatus)}. The same saved baseline timestamp and review timestamp are requested for each CMC ID. Historical access and depth depend on the CMC plan.</div>${matchedWindowChartMarkup(window)}</div><div class="detail-evidence">${rows}</div></div>`;
 }
+
 function thesisForm({assets=state.data.assets,primaryId=null,comparison=null}={}) {
   const options=[...assets];
   const date = new Date(); date.setDate(date.getDate()+7);

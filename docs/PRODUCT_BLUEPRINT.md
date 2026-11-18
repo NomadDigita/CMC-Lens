@@ -62,6 +62,7 @@ The defensible product wedge is the combination of:
 - Matched comparisons: asset, peer group, and market context use the same baseline and period.
 - A persistent thesis history: new evidence is appended, while the original record remains intact.
 - A retrospective review: later observations are compared with the original conditions to reduce hindsight bias.
+- Matched-window replay: the same saved CMC IDs are queried from the original comparison timestamp through the review timestamp, then displayed as indexed daily quote paths with visible missing intervals.
 - Beginner-readable interpretation: short explanations and caveats accompany market data without pretending to predict prices.
 
 The product will not compete on the number of indicators, an opaque “AI score,” portfolio tracking, or automatic buy/sell recommendations.
@@ -85,6 +86,7 @@ The product will not compete on the number of indicators, an opaque “AI score,
    - Compare a small number of assets using the same time window.
    - Show absolute performance alongside relative performance against a selected benchmark.
    - State what the comparison can and cannot support.
+   - Freeze the selected CMC IDs, prices, and comparison timestamp so later reviews can query the same cohort.
 
 4. **Thesis records**
    - Create a question or thesis with a baseline, affected assets/benchmarks, rationale, and review horizon.
@@ -95,6 +97,8 @@ The product will not compete on the number of indicators, an opaque “AI score,
 5. **Review timeline**
    - Append dated snapshots and user review notes.
    - Compare the current observation with the original baseline and chosen benchmark.
+   - Replay the exact baseline-to-review window for each saved CMC ID with normalized paths indexed to 100 at the saved price.
+   - Show expected versus returned daily samples and missing periods; never interpolate missing CMC observations.
    - Keep original evidence immutable and show any data corrections explicitly.
 
 6. **Demo path**
@@ -177,6 +181,7 @@ Responsive layouts must preserve the full workflow on mobile. Tables become focu
 - `GET /api/search?q=` — narrow asset lookup.
 - `GET /api/assets/:id` — normalized asset overview.
 - `GET /api/assets/:id/history?period=` — historical series when available.
+- `GET /api/market?view=window-history&ids=&start=&end=` — one bounded, shared-date CMC quote history window for saved comparison IDs.
 - `GET /api/categories` — category and peer context when plan access permits.
 - `POST /api/capsules/:id/verify` — later release only; validates a signed or hashed public capsule.
 
@@ -408,4 +413,4 @@ The submission checklist is:
 
 Hackathon evaluation categories are functionality (30), usefulness (25), interesting API use (20), code quality and documentation (15), and presentation (10). The product plan maps to these through a complete working thesis flow, an explainable use case, multiple CMC-backed contextual endpoints, this blueprint and API documentation, and a polished demo narrative. Track-specific weighting should be rechecked on DoraHacks before final submission.
 
-The event page indicates participant access to the CMC Startup API tier for the event period, subject to the event account match. The Startup plan currently covers the initial global-metrics, latest-listings, latest-quotes, asset-map, and historical-quotes endpoints selected here. We must still verify the participant's live key and actual endpoint entitlement from a real request before calling any production data live. The API key stays private; API credit usage and historical request counts are monitored.
+The event page indicates participant access to the CMC Startup API tier for the event period, subject to the event account match. The matched-window replay remains best-effort: it shows point-in-time comparison results even when CMC historical access is unavailable. The Startup plan currently covers the initial global-metrics, latest-listings, latest-quotes, asset-map, and historical-quotes endpoints selected here. We must still verify the participant's live key and actual endpoint entitlement from a real request before calling any production data live. The API key stays private; API credit usage and historical request counts are monitored.

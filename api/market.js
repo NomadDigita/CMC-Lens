@@ -4,6 +4,26 @@ const { randomUUID } = require("crypto");
 const CMC_ORIGIN = "https://pro-api.coinmarketcap.com";
 const SERVER_CACHE = new Map();
 const CACHE_MS = 60_000;
+const WINDOW_HISTORY_CACHE_MS = 10 * 60 * 1000;
+
+async function reserveSharedWindowHistoryBudget(token, credits) {
+  let base=String(process.env.SUPABASE_URL||"");
+  while(base.endsWith("/"))base=base.slice(0,-1);
+  const publishableKey=process.env.SUPABASE_PUBLISHABLE_KEY;
+  if(!base||!publishableKey)return {error:"CMC_HISTORY_BUDGET_UNAVAILABLE"};
+  try{
+    const response=await fetch(base+"/functions/v1/reserve-cmc-history",{
+      method:"POST",
+      headers:{apikey:publishableKey,Authorization:"Bearer "+token,"Content-Type":"application/json",Accept:"application/json"},
+      body:JSON.stringify({credits}),
+      signal:AbortSignal.timeout(6500)
+    });
+    const payload=await response.json().catch(()=>({}));
+    if(response.status===401||response.status===403)return {error:"CMC_HISTORY_AUTH_REQUIRED"};
+    if(!response.ok)return {error:"CMC_HISTORY_BUDGET_UNAVAILABLE"};
+    return {allowed:payload.allowed===true,retryAfterSeconds:Number(payload.retryAfterSeconds)||0,error:payload.error||null};
+  }catch{return {error:"CMC_HISTORY_BUDGET_UNAVAILABLE"};}
+}
 
 function reply(res, status, body, headers = {}) {
   if (Array.isArray(body?.sourceReceipts)) {
@@ -32,7 +52,7 @@ function setCached(key, value) {
 }
 
 function safeReceiptParams(params={}){
-  const allowed=new Set(["convert","start","limit","sort","sort_dir","aux","id","listing_status","time_start","time_end","interval","count"]);
+  const allowed=new Set(["convert","start","limit","sort","sort_dir","aux","id","listing_status","time_start","time_end","interval","count","skip_invalid"]);
   return Object.fromEntries(Object.entries(params).filter(([key,value])=>allowed.has(key)&&value!==undefined&&value!==null&&value!=="").map(([key,value])=>[key,String(value).slice(0,120)]));
 }
 
@@ -366,6 +386,30 @@ async function liveHistory(id, period, receiptSink=[]) {
     price: point.quote?.USD?.price ?? null
   })).filter(point => Number.isFinite(Number(point.price)));
 }
+async function liveWindowHistory(ids, timeStart, timeEnd, receiptSink=[]) {
+  const payload=await cmc("/v3/cryptocurrency/quotes/historical",{
+    id:ids.join(","),
+    time_start:timeStart,
+    time_end:timeEnd,
+    interval:"24h",
+    aux:"search_interval",
+    convert:"USD",
+    skip_invalid:"true"
+  },12000,receiptSink);
+  const result={};
+  for(const id of ids){
+    const asset=payload?.[id];
+    const quotes=Array.isArray(asset?.quotes)?asset.quotes:[];
+    result[id]=quotes.map(point=>{
+      const usd=point?.quote?.USD||{};
+      const timestamp=point?.search_interval||point?.quote?.search_interval||point?.timestamp||usd.search_interval||usd.timestamp||null;
+      const price=finiteMetric(usd.price);
+      return timestamp&&price!==null?{timestamp,price,observedAt:usd.timestamp||point.timestamp||null}:null;
+    }).filter(Boolean);
+  }
+  return result;
+}
+
 
 function demoHistory(id, period) {
   const asset = demo.assets.find(item => String(item.id) === String(id)) || demo.assets.find(item => item.symbol.toLowerCase() === String(id).toLowerCase());
@@ -394,6 +438,7 @@ module.exports = async function handler(req, res) {
       const series = demoHistory(req.query.id, String(req.query.period || "7D"));
       return series ? reply(res, 200, { mode: "demo", illustrative: true, series, sourceReceipts: [] }) : reply(res, 404, { error: "ASSET_NOT_FOUND" });
     }
+    if (view === "window-history") return reply(res, 200, { mode: "demo", series: {}, sourceReceipts: [] });
     if (view === "search") {
       const q = String(req.query.q || "").trim().toLowerCase();
       return reply(res, 200, { mode: "demo", assets: demoResponse.assets.filter(item => item.name.toLowerCase().includes(q) || item.symbol.toLowerCase() === q || String(item.id) === q), sourceReceipts: [] });
@@ -421,6 +466,36 @@ module.exports = async function handler(req, res) {
       if (!/^[a-zA-Z0-9][a-zA-Z0-9 .-]{1,39}$/.test(q)) return reply(res, 400, { error: "INVALID_QUERY", sourceReceipts });
       const assets = await liveSearch(q, sourceReceipts);
       return reply(res, 200, { mode: "live", retrievedAt: new Date().toISOString(), assets, sourceReceipts });
+    }
+    if (view === "window-history") {
+      const ids=String(req.query.ids||"").split(",").filter(Boolean);
+      const timeStart=String(req.query.start||"");
+      const timeEnd=String(req.query.end||"");
+      const startDate=new Date(timeStart),endDate=new Date(timeEnd),now=Date.now();
+      if(ids.length<2||ids.length>8||ids.some(id=>!/^\d{1,12}$/.test(id))||new Set(ids).size!==ids.length)return reply(res,400,{error:"INVALID_WINDOW_ASSETS",sourceReceipts});
+      if(!Number.isFinite(startDate.getTime())||!Number.isFinite(endDate.getTime())||startDate>=endDate||endDate.getTime()>now+60_000)return reply(res,400,{error:"INVALID_WINDOW",sourceReceipts});
+      if((endDate-startDate)>366*24*60*60*1000)return reply(res,400,{error:"WINDOW_TOO_WIDE",sourceReceipts});
+      const canonicalIds=[...ids].sort();
+      const startIso=startDate.toISOString(),endIso=endDate.toISOString();
+      const authParts=String(req.headers?.authorization||"").trim().split(/\s+/);
+      const token=authParts[0]?.toLowerCase()==="bearer"?authParts.slice(1).join(" "):null;
+      if(!token)return reply(res,401,{error:"CMC_HISTORY_AUTH_REQUIRED",sourceReceipts});
+      const cacheEndIso=new Date(Math.floor(endDate.getTime()/WINDOW_HISTORY_CACHE_MS)*WINDOW_HISTORY_CACHE_MS).toISOString();
+      const cacheKey="window-history:"+canonicalIds.join(",")+":"+startIso+":"+cacheEndIso;
+      const cached=getCached(cacheKey,WINDOW_HISTORY_CACHE_MS);
+      if(cached){
+        sourceReceipts.push(...cachedSourceReceipts(cached.sourceReceipts));
+        return reply(res,200,{mode:"live",retrievedAt:new Date().toISOString(),source:{provider:"CoinMarketCap",endpoint:"/v3/cryptocurrency/quotes/historical",interval:"24h",cache:"hit"},timeStart:startIso,timeEnd:endIso,series:cached.series,sourceReceipts});
+      }
+      const requestedDays=Math.ceil((endDate-startDate)/(24*60*60*1000))+1;
+      const estimatedCredits=Math.max(1,Math.ceil(requestedDays*canonicalIds.length/100));
+      const budget=await reserveSharedWindowHistoryBudget(token,estimatedCredits);
+      if(budget.error==="CMC_HISTORY_AUTH_REQUIRED")return reply(res,401,{error:budget.error,sourceReceipts});
+      if(budget.error)return reply(res,503,{error:"CMC_HISTORY_BUDGET_UNAVAILABLE",retryable:true,sourceReceipts});
+      if(!budget.allowed)return reply(res,429,{error:"CMC_HISTORY_BUDGET_EXHAUSTED",retryable:true,retryAfterSeconds:budget.retryAfterSeconds,sourceReceipts},{"Retry-After":String(budget.retryAfterSeconds)});
+      const series=await liveWindowHistory(canonicalIds,startIso,endIso,sourceReceipts);
+      setCached(cacheKey,{series,sourceReceipts});
+      return reply(res,200,{mode:"live",retrievedAt:new Date().toISOString(),source:{provider:"CoinMarketCap",endpoint:"/v3/cryptocurrency/quotes/historical",interval:"24h",cache:"miss"},timeStart:startIso,timeEnd:endIso,series,sourceReceipts});
     }
     if (view !== "overview") return reply(res, 400, { error: "INVALID_VIEW", sourceReceipts });
     return reply(res, 200, await liveOverview(sourceReceipts));

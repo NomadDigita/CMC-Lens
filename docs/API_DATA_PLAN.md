@@ -17,13 +17,13 @@ Endpoint access must be checked against the active CoinMarketCap event API tier 
 | Broad market context | `/v1/global-metrics/quotes/latest` | Market capitalization and dominance context | Clearly label unavailable metrics; no fabricated replacement |
 | Find an asset | `/v1/cryptocurrency/map` plus quotes latest by CMC ID | Name/symbol/CMC ID resolution | Local demo catalog in demo mode |
 | Current asset facts | `/v3/cryptocurrency/listings/latest` and `/v3/cryptocurrency/quotes/latest` | Asset dossier and matched quote snapshot | Show cached timestamp and stale badge if permitted |
-| Look back over a period | `/v3/cryptocurrency/quotes/historical` | Matched comparison and thesis review baseline | Select a period supported by account tier or omit the comparison |
+| Look back over a period | `/v3/cryptocurrency/quotes/historical` | Shared start/end window for the saved CMC IDs; index each returned daily quote to the frozen baseline | Select a supported window or show point-in-time replay with an explicit history-unavailable state |
 | Category/peer context | Categories and category listings | Peer cohort and rotation exploration | User-selected peer set; state it is not an official category |
 | Unusual activity discovery | Trending latest | Candidate queue entry point | Derive a small, explainable queue from accessible listings |
 | Sentiment context | Fear and Greed endpoint, if enabled | Optional contextual metric only | Exclude it from a core thesis if unavailable |
 | CMC AI or community signals | CMC AI Insights / community trending, if enabled | Potential future evidence source | Keep out of core MVP unless source and access are verified |
 
-The MVP is designed so it can work with a small set of authorized endpoints. Data breadth is less important than a trustworthy evidence trail.
+The MVP is designed so it can work with a small set of authorized endpoints. Data breadth is less important than a trustworthy evidence trail. A matched-window replay sends the saved IDs together and uses one shared baseline/review date range. It records per-asset daily point counts, displays missing intervals, and does not fill gaps. CMC currently documents daily history up to one year for the Basic tier; the application caps a requested window at 366 days and shows a point-in-time fallback if entitlement or coverage is unavailable. See the [official CMC historical quotes documentation](https://coinmarketcap.com/api/documentation/pro-api-reference/cryptocurrency) for plan and interval details. Historical replay requires a signed-in account. Before any upstream call, a Supabase Edge Function validates the session and reserves the estimated historical credits in a shared database budget (60 credits per account and 120 credits globally per rolling hour). The API coalesces requests with the same saved assets, baseline, and 10-minute review-time bucket for 10 minutes in a warm server instance; the shared database budget is the cross-instance control.
 
 ## Adapter contract
 
