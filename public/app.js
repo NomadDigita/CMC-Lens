@@ -20,7 +20,7 @@ const demoData = {
 const state = {
   data: demoData,
   view: "pulse",
-  theses: loadTheses(),
+  theses: startupTheses(),
   activeFilter: "all",
   comparePeriod: "7D",
   compareSymbols: ["BTC", "ETH", "SOL"],
@@ -32,12 +32,14 @@ const state = {
   auth: { configured: false, url: null, publishableKey: null, session: null, user: null, pendingEmail: null, syncing: false, syncRequested: false }
 };
 
-function loadTheses() {
-  try { const rows = JSON.parse(localStorage.getItem("cmc-lens-theses") || "[]"); return Array.isArray(rows) ? rows : []; }
+function loadTheses(key = "cmc-lens-theses") {
+  try { const rows = JSON.parse(localStorage.getItem(key) || "[]"); return Array.isArray(rows) ? rows : []; }
   catch { return []; }
 }
+function activeThesesKey() { return state.auth.user ? `cmc-lens-theses:${state.auth.user.id}` : "cmc-lens-theses"; }
+function startupTheses() { return localStorage.getItem("cmc-lens-session") ? [] : loadTheses(); }
 function saveTheses(sync = true) {
-  localStorage.setItem("cmc-lens-theses", JSON.stringify(state.theses));
+  localStorage.setItem(activeThesesKey(), JSON.stringify(state.theses));
   if (sync && state.auth.user) syncWorkspace().catch(() => updateStorageStatus("Saved locally · cloud sync will retry"));
 }
 function money(n, digits = 2) {
@@ -391,6 +393,45 @@ function updateStorageStatus(message) {
   else{text.textContent=message||"Saved in this browser. Sign in by email to sync your private thesis records.";button.textContent="Connect workspace";}
 }
 
+function chooseGuestImport(count,email) {
+  return new Promise(resolve=>{
+    let settled=false;
+    const finish=choice=>{if(settled)return;settled=true;closeModal();resolve(choice);};
+    openModal(`<div class="modal-head"><div><div class="panel-kicker">PRIVATE WORKSPACE SETUP</div><h2 id="modal-title">Bring over local research?</h2><p>${escapeHtml(email||"This account")} has a private cloud workspace. This browser has ${count} guest record${count===1?"":"s"}.</p></div><button id="modal-close" class="modal-close" aria-label="Close">×</button></div><div class="detail-content"><div class="detail-note">Importing sends these records and their notes to this signed-in Supabase workspace. Choose Keep local to leave them in this browser without uploading them.</div><div class="guest-import-actions"><button class="quiet-button" id="guest-keep-local">Keep local only</button><button class="primary-button" id="guest-import">Import ${count} record${count===1?"":"s"}</button></div></div>`);
+    document.getElementById("guest-import").addEventListener("click",()=>finish(true));
+    document.getElementById("guest-keep-local").addEventListener("click",()=>finish(false));
+    document.getElementById("modal-close").addEventListener("click",()=>finish(false));
+    document.getElementById("modal-backdrop").addEventListener("click",e=>{if(e.target.id==="modal-backdrop")finish(false);});
+    document.addEventListener("keydown",e=>{if(e.key==="Escape")finish(false);});
+  });
+}
+
+async function activateAccountWorkspace(user) {
+  if(!user?.id) throw new Error("The signed-in account could not be identified.");
+  state.auth.user=user;
+  const accountKey=`cmc-lens-theses:${user.id}`;
+  const setupKey=`cmc-lens-workspace-ready:${user.id}`;
+  const accountExists=localStorage.getItem(accountKey)!==null;
+  const guest=loadTheses();
+  let account=loadTheses(accountKey);
+  let importedGuest=false;
+  if(!localStorage.getItem(setupKey)){
+    if(!accountExists&&guest.length){
+      if(await chooseGuestImport(guest.length,user.email)){
+        importedGuest=true;
+        const byId=new Map(account.map(t=>[t.id,t]));
+        for(const t of guest)if(!byId.has(t.id))byId.set(t.id,t);
+        account=[...byId.values()];
+      }
+    }
+    localStorage.setItem(setupKey,"1");
+  }
+  state.theses=account;
+  localStorage.setItem(accountKey,JSON.stringify(account));
+  if(importedGuest)localStorage.removeItem("cmc-lens-theses");
+  renderThesisCards();
+}
+
 async function bootstrapAuth() {
   try{
     const response=await fetch("/api/health",{headers:{Accept:"application/json"}});
@@ -401,8 +442,8 @@ async function bootstrapAuth() {
     if(saved){try{state.auth.session=JSON.parse(saved);}catch{localStorage.removeItem("cmc-lens-session");}}
     await handleAuthCallback();
     if(state.auth.session?.access_token){
-      try{const user=await sbRequest("/auth/v1/user");state.auth.user=user;}
-      catch{await refreshAuthSession();}
+      try{const user=await sbRequest("/auth/v1/user");await activateAccountWorkspace(user);}
+      catch{await refreshAuthSession();if(state.auth.user)await activateAccountWorkspace(state.auth.user);}
     }
     updateStorageStatus();
     if(state.auth.user)await syncWorkspace();
@@ -412,7 +453,7 @@ async function bootstrapAuth() {
 async function refreshAuthSession(){
   const refresh=state.auth.session?.refresh_token;if(!refresh)return;
   try{const session=await authRequest("token?grant_type=refresh_token",{refresh_token:refresh});setAuthSession(session);}
-  catch{state.auth.session=null;state.auth.user=null;localStorage.removeItem("cmc-lens-session");}
+  catch{state.auth.session=null;state.auth.user=null;localStorage.removeItem("cmc-lens-session");state.theses=loadTheses();renderThesisCards();updateStorageStatus("Signed out · guest records remain in this browser.");}
 }
 
 async function handleAuthCallback(){
@@ -440,7 +481,7 @@ function authForm(step="email"){
       }else{
         const code=new FormData(e.currentTarget).get("code").trim();
         const session=await authRequest("verify",{email:state.auth.pendingEmail,token:code,type:"email"});
-        setAuthSession(session);state.auth.pendingEmail=null;closeModal();await syncWorkspace();updateStorageStatus();toast("Workspace connected. Your research is syncing.");
+        setAuthSession(session);state.auth.pendingEmail=null;closeModal();const user=session.user||await sbRequest("/auth/v1/user");await activateAccountWorkspace(user);await syncWorkspace();updateStorageStatus();toast("Workspace connected. Your account records are syncing.");
       }
     }catch(error){toast(error.message||"Sign-in could not be completed.",true);submit.disabled=false;}
   });
@@ -469,13 +510,13 @@ async function syncWorkspace(){
     {const remote=await sbRequest(`/rest/v1/theses?select=*&owner_id=eq.${encodeURIComponent(owner)}&order=created_at.desc`);const missing=(remote||[]).filter(row=>!state.theses.some(t=>t.id===row.id));
       if(missing.length){const missingIds=missing.map(t=>t.id).join(",");const [evidence,reviews,snapshots,conditions]=await Promise.all([sbRequest(`/rest/v1/evidence_items?select=*&owner_id=eq.${encodeURIComponent(owner)}&thesis_id=in.(${missingIds})`),sbRequest(`/rest/v1/thesis_reviews?select=*&owner_id=eq.${encodeURIComponent(owner)}&thesis_id=in.(${missingIds})`),sbRequest(`/rest/v1/thesis_snapshots?select=*&owner_id=eq.${encodeURIComponent(owner)}&thesis_id=in.(${missingIds})&order=captured_at.asc`),sbRequest(`/rest/v1/thesis_conditions?select=*&owner_id=eq.${encodeURIComponent(owner)}&thesis_id=in.(${missingIds})&active=eq.true`)]);for(const row of missing){const thesisSnapshots=(snapshots||[]).filter(x=>x.thesis_id===row.id);const baseline=thesisSnapshots.find(x=>x.id===row.baseline_snapshot_id)||null;const rowConditions=(conditions||[]).filter(x=>x.thesis_id===row.id);state.theses.push({id:row.id,title:row.title,view:row.thesis_text,assetId:row.primary_asset_id,assetSymbol:row.primary_asset_symbol,createdAt:row.created_at,reviewAt:row.review_at,status:row.status,baselineSnapshotId:row.baseline_snapshot_id,baselineSnapshot:baseline?.source_payload?.baseline||null,condition:rowConditions[0]?.description||"",conditionId:rowConditions[0]?.id||null,evidence:(evidence||[]).filter(x=>x.thesis_id===row.id&&(!row.baseline_snapshot_id||x.snapshot_id===row.baseline_snapshot_id)).map(x=>({id:x.id,label:x.label,value:x.value_text||"",detail:x.detail,source:baseline?.source_provider==="coinmarketcap"?"CoinMarketCap":"Synced evidence",sourceTimestamp:x.source_timestamp,sourceUrl:x.source_url})),reviews:(reviews||[]).filter(x=>x.thesis_id===row.id).map(x=>({id:x.id,date:x.reviewed_at,result:x.result_label,note:x.summary,snapshotId:x.snapshot_id,snapshot:thesisSnapshots.find(s=>s.id===x.snapshot_id)?.source_payload?.review||null}))});}}
     }
-    localStorage.setItem("cmc-lens-theses",JSON.stringify(state.theses));renderThesisCards();updateStorageStatus("Synced to your private Supabase workspace.");
+    localStorage.setItem(activeThesesKey(),JSON.stringify(state.theses));renderThesisCards();updateStorageStatus("Synced to your private Supabase workspace.");
   }finally{state.auth.syncing=false;if(state.auth.syncRequested){state.auth.syncRequested=false;syncWorkspace().catch(()=>updateStorageStatus("Saved locally · cloud sync will retry"));}}
 }
 
 async function signOutWorkspace(){
   try{await sbRequest("/auth/v1/logout",{method:"POST"});}catch{}
-  state.auth.session=null;state.auth.user=null;localStorage.removeItem("cmc-lens-session");updateStorageStatus("Signed out · records remain in this browser and your cloud workspace.");
+  state.auth.session=null;state.auth.user=null;localStorage.removeItem("cmc-lens-session");state.theses=loadTheses();renderThesisCards();updateStorageStatus("Signed out · guest records remain in this browser.");
 }
 
 function setup() {
