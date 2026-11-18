@@ -479,7 +479,7 @@ async function loadCompareHistory() {
     try{const r=await fetch(`/api/market?view=history&id=${encodeURIComponent(asset.id)}&period=${state.comparePeriod}`,{headers:{Accept:"application/json"}});const body=await r.json().catch(()=>({}));return {symbol,series:r.ok&&Array.isArray(body.series)?body.series:[],retrievedAt:body.retrievedAt,sourceReceipts:Array.isArray(body.sourceReceipts)?body.sourceReceipts:[]};}
     catch{return {symbol,series:[]};}
   }));
-  state.historicalCache[key]=rows;delete state.historyPending[key];state.latestSourceReceipts=[...new Map(rows.flatMap(row=>row.sourceReceipts||[]).map(receipt=>[receipt.requestId,receipt])).values()];
+  state.historicalCache[key]=rows;delete state.historyPending[key];if(state.view==="compare"&&`${state.comparePeriod}:${state.compareSymbols.join(",")}`===key)state.latestSourceReceipts=[...new Map(rows.flatMap(row=>row.sourceReceipts||[]).map(receipt=>[receipt.requestId,receipt])).values()];
   if(state.view==="compare"&&`${state.comparePeriod}:${state.compareSymbols.join(",")}`===key)renderCompare();
 }
 
