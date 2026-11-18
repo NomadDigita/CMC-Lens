@@ -14,7 +14,8 @@ function reply(res, status, body, headers = {}) {
     })) };
   }
   res.setHeader("Content-Type", "application/json; charset=utf-8");
-  res.setHeader("Cache-Control", status < 400 ? "s-maxage=60, stale-while-revalidate=300" : "no-store");
+  const hasReceipts=Array.isArray(body?.sourceReceipts)&&body.sourceReceipts.length>0;
+  res.setHeader("Cache-Control", hasReceipts ? "private, no-store" : status < 400 ? "s-maxage=60, stale-while-revalidate=300" : "no-store");
   Object.entries(headers).forEach(([key, value]) => res.setHeader(key, value));
   return res.status(status).json(body);
 }
@@ -63,7 +64,7 @@ function responseSummary(path,data){
 function makeSourceReceipt(path,params,{upstreamStatus=null,data=null,error=null}={}){
   const servedAt=new Date().toISOString();
   const cmcCode=Number(error?.cmcCode||0)||null;
-  return {requestId:randomUUID(),provider:"CoinMarketCap",method:"GET",endpoint:path,params:safeReceiptParams(params),outcome:error?(upstreamStatus>=500||error.name==="TimeoutError"||error.name==="AbortError"?"unavailable":"error"):"success",upstreamStatus,errorCode:error?(cmcCode?`CMC_${cmcCode}`:upstreamStatus?`HTTP_${upstreamStatus}`:error.name==="TimeoutError"?"TIMEOUT":"NETWORK_ERROR"):null,appCache:{status:"miss",servedAt,sourceRetrievedAt:servedAt},sourceObservedAt:error?null:sourceObservedAt(path,data),recordCount:error?null:(path==="/v3/cryptocurrency/quotes/historical"?responseSummary(path,data).points:receiptRows(data).length),responseSummary:error?{}:responseSummary(path,data)};
+  return {requestId:randomUUID(),provider:"CoinMarketCap",method:"GET",endpoint:path,params:safeReceiptParams(params),outcome:error?(upstreamStatus>=500||error.name==="TimeoutError"||error.name==="AbortError"?"unavailable":"error"):"success",upstreamStatus,errorCode:error?(cmcCode?`CMC_${cmcCode}`:upstreamStatus?`HTTP_${upstreamStatus}`:error.name==="TimeoutError"?"TIMEOUT":"NETWORK_ERROR"):null,appCache:{status:"miss",servedAt,sourceRetrievedAt:servedAt},sourceObservedAt:error?null:sourceObservedAt(path,data),recordCount:error?null:(path==="/v3/cryptocurrency/quotes/historical"?responseSummary(path,data).points:["/v1/global-metrics/quotes/latest","/v3/fear-and-greed/latest"].includes(path)?(data==null?0:Array.isArray(data)?data.length:1):receiptRows(data).length),responseSummary:error?{}:responseSummary(path,data)};
 }
 
 function cachedSourceReceipts(receipts=[]){
