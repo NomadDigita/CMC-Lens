@@ -6,14 +6,14 @@ const demoData = {
     { name: "Layer 1", advancing: 82 }, { name: "DeFi", advancing: 74 }, { name: "AI & Data", advancing: 61 }, { name: "Gaming", advancing: 53 }, { name: "Meme", advancing: 39 }
   ],
   assets: [
-    { id: "1", name: "Bitcoin", symbol: "BTC", price: 68342.18, change24h: 3.1, marketCap: 1.35e12, volume24h: 31.6e9, color: "#f3a94b", peers: "market +2.8%", peerDelta: 71, note: "Outperforming a positive market" },
-    { id: "1027", name: "Ethereum", symbol: "ETH", price: 3544.92, change24h: 1.42, marketCap: 426.3e9, volume24h: 14.9e9, color: "#859af2", peers: "L1 peers +2.1%", peerDelta: 46, note: "Trailing its peer group" },
-    { id: "5426", name: "Solana", symbol: "SOL", price: 178.64, change24h: 6.82, marketCap: 79.2e9, volume24h: 3.7e9, color: "#8fe7bb", peers: "L1 peers +2.1%", peerDelta: 94, note: "Move is broader than L1 peers" },
-    { id: "3408", name: "USD Coin", symbol: "USDC", price: 1.0001, change24h: 0.02, marketCap: 33.8e9, volume24h: 4.8e9, color: "#6a9bf0", peers: "stablecoin range", peerDelta: 12, note: "Within its usual narrow range" },
-    { id: "825", name: "Tether", symbol: "USDT", price: 0.9998, change24h: -0.01, marketCap: 118.4e9, volume24h: 47.2e9, color: "#55bf9b", peers: "stablecoin range", peerDelta: 10, note: "Within its usual narrow range" },
-    { id: "1975", name: "Chainlink", symbol: "LINK", price: 18.24, change24h: 4.37, marketCap: 10.7e9, volume24h: 0.42e9, color: "#719cf5", peers: "Infra peers +2.7%", peerDelta: 79, note: "Outperforming infrastructure peers" },
-    { id: "52", name: "XRP", symbol: "XRP", price: 0.6241, change24h: -2.46, marketCap: 34.1e9, volume24h: 1.23e9, color: "#90a3b7", peers: "large caps +2.5%", peerDelta: 21, note: "Moving against large-cap peers" },
-    { id: "74", name: "Dogecoin", symbol: "DOGE", price: 0.163, change24h: 8.25, marketCap: 23.5e9, volume24h: 1.62e9, color: "#d2b156", peers: "meme assets +1.7%", peerDelta: 97, note: "Strong move within a volatile category" }
+    { id: "1", name: "Bitcoin", symbol: "BTC", tags: ["layer-1"], category: "Layer 1", price: 68342.18, change24h: 3.1, marketCap: 1.35e12, volume24h: 31.6e9, color: "#f3a94b", peers: "market +2.8%", peerDelta: 71, note: "Outperforming a positive market" },
+    { id: "1027", name: "Ethereum", symbol: "ETH", tags: ["layer-1"], category: "Layer 1", price: 3544.92, change24h: 1.42, marketCap: 426.3e9, volume24h: 14.9e9, color: "#859af2", peers: "L1 peers +2.1%", peerDelta: 46, note: "Trailing its peer group" },
+    { id: "5426", name: "Solana", symbol: "SOL", tags: ["layer-1"], category: "Layer 1", price: 178.64, change24h: 6.82, marketCap: 79.2e9, volume24h: 3.7e9, color: "#8fe7bb", peers: "L1 peers +2.1%", peerDelta: 94, note: "Move is broader than L1 peers" },
+    { id: "3408", name: "USD Coin", symbol: "USDC", tags: ["stablecoin"], category: "Stablecoins", price: 1.0001, change24h: 0.02, marketCap: 33.8e9, volume24h: 4.8e9, color: "#6a9bf0", peers: "stablecoin range", peerDelta: 12, note: "Within its usual narrow range" },
+    { id: "825", name: "Tether", symbol: "USDT", tags: ["stablecoin"], category: "Stablecoins", price: 0.9998, change24h: -0.01, marketCap: 118.4e9, volume24h: 47.2e9, color: "#55bf9b", peers: "stablecoin range", peerDelta: 10, note: "Within its usual narrow range" },
+    { id: "1975", name: "Chainlink", symbol: "LINK", tags: ["smart-contracts"], category: "Smart contracts", price: 18.24, change24h: 4.37, marketCap: 10.7e9, volume24h: 0.42e9, color: "#719cf5", peers: "Infra peers +2.7%", peerDelta: 79, note: "Outperforming infrastructure peers" },
+    { id: "52", name: "XRP", symbol: "XRP", tags: ["layer-1"], category: "Layer 1", price: 0.6241, change24h: -2.46, marketCap: 34.1e9, volume24h: 1.23e9, color: "#90a3b7", peers: "large caps +2.5%", peerDelta: 21, note: "Moving against large-cap peers" },
+    { id: "74", name: "Dogecoin", symbol: "DOGE", tags: ["meme"], category: "Meme", price: 0.163, change24h: 8.25, marketCap: 23.5e9, volume24h: 1.62e9, color: "#d2b156", peers: "meme assets +1.7%", peerDelta: 97, note: "Strong move within a volatile category" }
   ]
 };
 
@@ -29,6 +29,7 @@ const state = {
   comparePickerQuery: "",
   historicalCache: {},
   historyPending: {},
+  atlas: { category: "all", cap: "all", hideStablecoins: true, mode: "map", selected: [], activeId: null },
   currentAsset: null,
   auth: { configured: false, url: null, publishableKey: null, session: null, user: null, pendingEmail: null, syncing: false, syncRequested: false, syncEpoch: 0, sessionEpoch: 0, syncJob: null }
 };
@@ -197,7 +198,170 @@ function render() {
   const sparkHost=document.getElementById("market-sparkline");
   if(state.data.mode==="demo") sparkline(); else sparkHost.innerHTML="";
   setConnection(state.data.mode, state.data.retrievedAt);
-  renderCompare(); renderExplore();
+  renderCompare(); renderExplore(); renderAtlas();
+}
+
+const ATLAS_CATEGORY_LABELS = ["Layer 1","Layer 2","Smart contracts","DeFi","AI & Data","Gaming","Meme","Stablecoins"];
+const ATLAS_STABLECOIN_SYMBOLS = new Set(["USDT","USDC","DAI","FDUSD","USDE","USDS","TUSD","USDP"]);
+
+function atlasCategory(asset){
+  if(asset?.category)return String(asset.category);
+  for(const tag of asset?.tags||[]){
+    const value=typeof tag==="string"?tag:(tag?.slug||tag?.name||"");
+    const key=String(value).toLowerCase().replace(/[^a-z0-9]+/g,"");
+    const match=ATLAS_CATEGORY_LABELS.find(label=>label.toLowerCase().replace(/[^a-z0-9]+/g,"")===key);
+    if(match)return match;
+    if(key==="layer1s"||key==="layer1l1")return "Layer 1";
+    if(key==="layer2s"||key==="layer2l2")return "Layer 2";
+    if(key==="decentralizedfinance")return "DeFi";
+    if(key==="artificialintelligence"||key==="aibigdata")return "AI & Data";
+    if(key==="stablecoin")return "Stablecoins";
+  }
+  return "Unclassified";
+}
+
+function atlasIsStablecoin(asset){
+  return ATLAS_STABLECOIN_SYMBOLS.has(String(asset?.symbol||"").toUpperCase()) ||
+    atlasCategory(asset)==="Stablecoins" ||
+    (asset?.tags||[]).some(tag=>String(typeof tag==="string"?tag:tag?.slug||tag?.name||"").toLowerCase().includes("stablecoin"));
+}
+
+function atlasRelativeChange(asset,all){
+  if(hasNumericValue(asset?.relativeChange24h))return Number(asset.relativeChange24h);
+  const category=atlasCategory(asset);
+  if(category==="Unclassified")return null;
+  const peers=all.filter(candidate=>String(candidate.id)!==String(asset.id)&&atlasCategory(candidate)===category&&hasNumericValue(candidate.change24h));
+  if(!peers.length||!hasNumericValue(asset.change24h))return null;
+  const mean=peers.reduce((sum,candidate)=>sum+Number(candidate.change24h),0)/peers.length;
+  return Number(asset.change24h)-mean;
+}
+
+function atlasColor(relative){
+  if(!Number.isFinite(relative))return "var(--muted)";
+  if(relative>.25)return "var(--lime)";
+  if(relative<-.25)return "var(--orange)";
+  return "var(--blue)";
+}
+
+function renderAtlas(){
+  const categorySelect=document.getElementById("atlas-category-filter");
+  if(!categorySelect)return;
+  const all=Array.isArray(state.data.assets)?state.data.assets:[];
+  const known=[...new Set(all.map(atlasCategory))].sort((a,b)=>ATLAS_CATEGORY_LABELS.indexOf(a)-ATLAS_CATEGORY_LABELS.indexOf(b));
+  const previousCategory=state.atlas.category;
+  categorySelect.innerHTML='<option value="all">All categories</option>'+known.map(category=>'<option value="'+escapeHtml(category)+'">'+escapeHtml(category)+'</option>').join("");
+  categorySelect.value=known.includes(previousCategory)?previousCategory:"all";
+  state.atlas.category=categorySelect.value;
+  const capSelect=document.getElementById("atlas-cap-filter");
+  const stableToggle=document.getElementById("atlas-hide-stablecoins");
+  capSelect.value=state.atlas.cap;
+  stableToggle.checked=state.atlas.hideStablecoins;
+  const universe=state.data.universe||{scope:state.data.mode==="live"?"top-100-by-market-cap":"illustrative-demo-sample",queriedCount:all.length,coveredCount:all.filter(asset=>hasNumericValue(asset.change24h)).length,missingCount:all.filter(asset=>!hasNumericValue(asset.change24h)).length,retrievedAt:state.data.retrievedAt,sourceObservedAt:null};
+  const queried=Number(universe.queriedCount)||all.length;
+  const covered=Number(universe.coveredCount)||0;
+  const missing=Number(universe.missingCount)||0;
+  document.getElementById("atlas-universe-scope").textContent=state.data.mode==="live"?"Top "+queried+" by market cap":"Illustrative demo sample · "+queried+" assets";
+  document.getElementById("atlas-coverage").textContent=covered+" / "+queried+" · "+missing+" missing";
+  const asof=universe.sourceObservedAt||universe.retrievedAt||state.data.retrievedAt;
+  document.getElementById("atlas-asof").textContent=(state.data.mode==="live"?"CMC snapshot retrieved ":"Demo snapshot · ")+(asof?new Date(asof).toLocaleString(undefined,{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}):"time unavailable");
+  document.getElementById("atlas-data-state").textContent=state.data.mode==="live"?"· live CMC data":"· demo values";
+  const filtered=all.filter(asset=>{
+    if(state.atlas.category!=="all"&&atlasCategory(asset)!==state.atlas.category)return false;
+    if(state.atlas.hideStablecoins&&atlasIsStablecoin(asset))return false;
+    const cap=Number(asset.marketCap);
+    if(state.atlas.cap==="under-100m"&&(!Number.isFinite(cap)||cap>=1e8))return false;
+    if(state.atlas.cap==="100m-1b"&&(!Number.isFinite(cap)||cap<1e8||cap>=1e9))return false;
+    if(state.atlas.cap==="over-1b"&&(!Number.isFinite(cap)||cap<1e9))return false;
+    return true;
+  });
+  if(!filtered.some(asset=>String(asset.id)===String(state.atlas.activeId)))state.atlas.activeId=filtered[0]?String(filtered[0].id):null;
+  const plotted=filtered.filter(asset=>hasNumericValue(asset.change24h)&&Number.isFinite(atlasRelativeChange(asset,all)));
+  document.getElementById("atlas-result-count").textContent=filtered.length+" assets · "+plotted.length+" with peer-relative coverage";
+  const mapWrap=document.getElementById("atlas-map-wrap"),listWrap=document.getElementById("atlas-list-wrap");
+  mapWrap.hidden=state.atlas.mode!=="map";listWrap.hidden=state.atlas.mode!=="list";
+  document.getElementById("atlas-view-map").classList.toggle("selected",state.atlas.mode==="map");
+  document.getElementById("atlas-view-map").setAttribute("aria-pressed",String(state.atlas.mode==="map"));
+  document.getElementById("atlas-view-list").classList.toggle("selected",state.atlas.mode==="list");
+  document.getElementById("atlas-view-list").setAttribute("aria-pressed",String(state.atlas.mode==="list"));
+
+  const width=900,height=448,left=64,right=26,top=24,bottom=55,plotWidth=width-left-right,plotHeight=height-top-bottom;
+  const coord=value=>Math.max(-20,Math.min(20,Number(value)));
+  const px=value=>left+((coord(value)+20)/40)*plotWidth;
+  const py=value=>top+((20-coord(value))/40)*plotHeight;
+  let svg='<svg class="atlas-svg" viewBox="0 0 '+width+' '+height+'" role="group" aria-label="Interactive scatter plot of covered assets by absolute return and return relative to category peers">';
+  for(let tick=-20;tick<=20;tick+=10){
+    const xx=px(tick),yy=py(tick);
+    svg+='<line x1="'+xx+'" y1="'+top+'" x2="'+xx+'" y2="'+(height-bottom)+'" class="'+(tick===0?"atlas-zero-line":"atlas-grid-line")+'"/>';
+    svg+='<line x1="'+left+'" y1="'+yy+'" x2="'+(width-right)+'" y2="'+yy+'" class="'+(tick===0?"atlas-zero-line":"atlas-grid-line")+'"/>';
+    svg+='<text x="'+xx+'" y="'+(height-bottom+21)+'" text-anchor="middle" class="atlas-axis-label">'+tick+'%</text>';
+    svg+='<text x="'+(left-11)+'" y="'+(yy+4)+'" text-anchor="end" class="atlas-axis-label">'+tick+'%</text>';
+  }
+  svg+='<text x="'+(left+plotWidth/2)+'" y="'+(height-9)+'" text-anchor="middle" class="atlas-axis-title">ASSET 24H RETURN</text>';
+  svg+='<text x="14" y="'+(top+plotHeight/2)+'" transform="rotate(-90 14 '+(top+plotHeight/2)+')" text-anchor="middle" class="atlas-axis-title">RELATIVE TO CATEGORY PEERS</text>';
+  for(const asset of plotted){
+    const relative=atlasRelativeChange(asset,all),change=Number(asset.change24h),marketCap=Number(asset.marketCap)||0;
+    const radius=Math.max(5,Math.min(17,4+Math.max(0,Math.log10(Math.max(1,marketCap))-5)*1.35));
+    const x=px(change),y=py(relative),color=atlasColor(relative),active=String(asset.id)===String(state.atlas.activeId),selected=state.atlas.selected.includes(String(asset.id));
+    const relation=relative>0?"+":"";
+    const aria=asset.name+" ("+asset.symbol+"), 24-hour return "+fmtPercent(change)+", relative to "+atlasCategory(asset)+" peers "+relation+relative.toFixed(2)+"%"+(selected?", in research cohort":"");
+    svg+='<circle class="atlas-bubble'+(active?" active":"")+(selected?" selected":"")+'" cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="'+radius.toFixed(1)+'" fill="'+color+'" tabindex="0" role="button" data-atlas-id="'+escapeHtml(asset.id)+'" aria-label="'+escapeHtml(aria)+'"><title>'+escapeHtml(asset.symbol+" · "+fmtPercent(change)+" absolute · "+relation+relative.toFixed(2)+"% relative")+'</title></circle>';
+  }
+  svg+='</svg>';
+  document.getElementById("atlas-map").innerHTML=plotted.length?svg:'<div class="atlas-empty">No assets in this filtered set have both a reported 24-hour return and covered category peers. Switch category or use the accessible list.</div>';
+  const list=document.getElementById("atlas-list");
+  if(!filtered.length)list.innerHTML='<div class="atlas-empty">No assets match the current filters. Clear a filter to see the market sample.</div>';
+  else list.innerHTML=filtered.map(asset=>{
+    const relative=atlasRelativeChange(asset,all),change=hasNumericValue(asset.change24h)?Number(asset.change24h):null;
+    const selected=state.atlas.selected.includes(String(asset.id));
+    return '<article class="atlas-list-row" role="listitem"><button class="atlas-list-main" data-atlas-id="'+escapeHtml(asset.id)+'"><span class="atlas-list-name"><strong>'+escapeHtml(asset.name)+'</strong><small>'+escapeHtml(asset.symbol)+' · '+escapeHtml(atlasCategory(asset))+'</small></span><span class="atlas-list-move '+(change===null?"missing":change>=0?"positive":"negative")+'">'+(change===null?"—":fmtPercent(change))+'</span><span class="atlas-list-relative">'+(relative===null?"No peer sample":fmtPercent(relative))+'</span><span class="atlas-list-cap">'+money(asset.marketCap)+'</span></button><button class="atlas-row-add" data-atlas-toggle="'+escapeHtml(asset.id)+'" aria-label="'+(selected?"Remove ":"Add ")+escapeHtml(asset.symbol||asset.name)+(selected?" from":" to")+' research cohort">'+(selected?"✓":"＋")+'</button></article>';
+  }).join("");
+
+  const active=all.find(asset=>String(asset.id)===String(state.atlas.activeId));
+  const selectedAssets=state.atlas.selected.map(id=>all.find(asset=>String(asset.id)===id)).filter(Boolean);
+  const selectedMarkup=selectedAssets.length?'<div class="atlas-selected-chips">'+selectedAssets.map(asset=>'<button data-atlas-remove="'+escapeHtml(asset.id)+'" aria-label="Remove '+escapeHtml(asset.symbol||asset.name)+' from research cohort">'+escapeHtml(asset.symbol||asset.name)+' ×</button>').join("")+'</div>':'<div class="atlas-selected-empty">No assets in the cohort yet.</div>';
+  let detail='<div class="empty-hint">Select an asset bubble or row to inspect its context.</div>';
+  if(active){
+    const relative=atlasRelativeChange(active,all),change=hasNumericValue(active.change24h)?Number(active.change24h):null;
+    const derivedPeers=all.filter(candidate=>String(candidate.id)!==String(active.id)&&atlasCategory(candidate)===atlasCategory(active));
+    const derivedCovered=derivedPeers.filter(candidate=>hasNumericValue(candidate.change24h)).length;
+    const peers=hasNumericValue(active.categoryPeerCount)?Number(active.categoryPeerCount):derivedCovered;
+    const peerUniverse=hasNumericValue(active.categoryPeerUniverse)?Number(active.categoryPeerUniverse):derivedPeers.length;
+    const peerText=relative===null?"No covered category peer sample":peers+" covered of "+peerUniverse+" category peers";
+    const has=state.atlas.selected.includes(String(active.id));
+    detail='<div class="atlas-asset-detail"><div class="atlas-detail-heading"><div><span class="atlas-kicker">'+escapeHtml(atlasCategory(active))+'</span><h3>'+escapeHtml(active.name)+'</h3><small>'+escapeHtml(active.symbol)+' · CMC ID '+escapeHtml(active.id)+'</small></div><span class="atlas-detail-icon">'+escapeHtml(String(active.symbol||"?").slice(0,1))+'</span></div><div class="atlas-detail-metrics"><div><span>24H RETURN</span><strong class="'+(change===null?"missing":change>=0?"positive":"negative")+'">'+(change===null?"—":fmtPercent(change))+'</strong></div><div><span>VS CATEGORY PEERS</span><strong class="'+(relative===null?"missing":relative>=0?"positive":"negative")+'">'+(relative===null?"—":fmtPercent(relative))+'</strong></div><div><span>MARKET CAP</span><strong>'+money(active.marketCap)+'</strong></div><div><span>24H VOLUME</span><strong>'+money(active.volume24h)+'</strong></div></div><div class="atlas-peer-coverage"><span>'+escapeHtml(peerText)+'</span><span>CMC observed '+escapeHtml(active.observedAt?new Date(active.observedAt).toLocaleString():"time unavailable")+'</span></div><div class="atlas-detail-actions"><button class="secondary-button" data-atlas-toggle="'+escapeHtml(active.id)+'">'+(has?"Remove from cohort":"＋ Add to cohort")+'</button><button class="text-button" data-atlas-open="'+escapeHtml(active.id)+'">Open asset dossier ↗</button></div></div>';
+  }
+  document.getElementById("atlas-selection-summary").innerHTML=detail+selectedMarkup;
+  document.getElementById("atlas-selection-count").textContent=state.atlas.selected.length+" / 8 selected";
+  document.getElementById("atlas-compare-selection").disabled=state.atlas.selected.length<2;
+  document.getElementById("atlas-thesis-selection").disabled=state.atlas.selected.length<2;
+  document.getElementById("atlas-clear-selection").disabled=state.atlas.selected.length===0;
+
+  document.querySelectorAll("#atlas-map [data-atlas-id],#atlas-list [data-atlas-id]").forEach(el=>{
+    el.addEventListener("click",()=>{state.atlas.activeId=String(el.dataset.atlasId);renderAtlas();});
+    el.addEventListener("keydown",event=>{if(event.key==="Enter"||event.key===" "){event.preventDefault();state.atlas.activeId=String(el.dataset.atlasId);renderAtlas();}});
+  });
+  document.querySelectorAll("#atlas-list [data-atlas-toggle],#atlas-selection-summary [data-atlas-toggle]").forEach(el=>el.addEventListener("click",()=>toggleAtlasSelection(el.dataset.atlasToggle)));
+  document.querySelectorAll("#atlas-selection-summary [data-atlas-remove]").forEach(el=>el.addEventListener("click",()=>toggleAtlasSelection(el.dataset.atlasRemove,true)));
+  document.querySelectorAll("#atlas-selection-summary [data-atlas-open]").forEach(el=>el.addEventListener("click",()=>{const asset=all.find(item=>String(item.id)===String(el.dataset.atlasOpen));if(asset)showAsset(asset.symbol||asset.id);}));
+}
+
+function toggleAtlasSelection(id,removeOnly=false){
+  const key=String(id),selected=[...state.atlas.selected];
+  if(selected.includes(key)){if(!removeOnly)state.atlas.selected=selected.filter(item=>item!==key);}
+  else if(!removeOnly){if(selected.length>=8){toast("The research cohort is limited to eight CMC assets.",true);return;}state.atlas.selected=[...selected,key];state.atlas.activeId=key;}
+  renderAtlas();
+}
+
+function carryAtlasSelectionToCompare(startThesis=false){
+  const assets=state.atlas.selected.map(id=>state.data.assets.find(asset=>String(asset.id)===String(id))).filter(Boolean);
+  if(assets.length<2){toast("Select at least two assets for a matched comparison.",true);return;}
+  state.compareAssetCache||={};
+  for(const asset of assets)state.compareAssetCache[String(asset.id)]=asset;
+  state.compareSymbols=assets.map(asset=>String(asset.id));
+  normalizeCompareSelections();
+  if(startThesis){comparisonThesisForm();return;}
+  switchView("compare");
+  renderCompare();
 }
 
 function switchView(view) {
@@ -205,9 +369,10 @@ function switchView(view) {
   document.querySelectorAll(".page-view").forEach(el => el.classList.remove("active"));
   const target = document.getElementById(`view-${view}`); if (target) target.classList.add("active");
   document.querySelectorAll(".nav-item").forEach(el => el.classList.toggle("active", el.dataset.view === view));
-  document.getElementById("breadcrumb-current").textContent = ({pulse:"Market pulse",explore:"Explore assets",compare:"Compare",theses:"Thesis log",settings:"Settings"})[view] || "Workspace";
+  document.getElementById("breadcrumb-current").textContent = ({pulse:"Market pulse",explore:"Explore assets",compare:"Compare",atlas:"Market Atlas",theses:"Thesis log",settings:"Settings"})[view] || "Workspace";
   document.getElementById("sidebar").classList.remove("open");
   if (view === "compare") loadCompareHistory();
+  if (view === "atlas") renderAtlas();
   window.scrollTo({top:0,behavior:"smooth"});
 }
 
@@ -923,6 +1088,15 @@ function setup() {
   document.querySelectorAll("[data-thesis-filter]").forEach(el=>el.addEventListener("click",()=>{state.activeFilter=el.dataset.thesisFilter;document.querySelectorAll("[data-thesis-filter]").forEach(x=>x.classList.toggle("selected",x===el));renderThesesPage();}));
   ["new-thesis","new-thesis-alt","explore-new-thesis","theses-new"].forEach(id=>document.getElementById(id).addEventListener("click",()=>thesisForm()));
   document.getElementById("compare-save-thesis").addEventListener("click",comparisonThesisForm);
+  document.getElementById("atlas-category-filter").addEventListener("change",event=>{state.atlas.category=event.target.value;renderAtlas();});
+  document.getElementById("atlas-cap-filter").addEventListener("change",event=>{state.atlas.cap=event.target.value;renderAtlas();});
+  document.getElementById("atlas-hide-stablecoins").addEventListener("change",event=>{state.atlas.hideStablecoins=event.target.checked;renderAtlas();});
+  document.getElementById("atlas-view-map").addEventListener("click",()=>{state.atlas.mode="map";renderAtlas();});
+  document.getElementById("atlas-view-list").addEventListener("click",()=>{state.atlas.mode="list";renderAtlas();});
+  document.getElementById("atlas-inspect-source").addEventListener("click",()=>openModal(sourceReceiptMarkup()));
+  document.getElementById("atlas-compare-selection").addEventListener("click",()=>carryAtlasSelectionToCompare(false));
+  document.getElementById("atlas-thesis-selection").addEventListener("click",()=>carryAtlasSelectionToCompare(true));
+  document.getElementById("atlas-clear-selection").addEventListener("click",()=>{state.atlas.selected=[];renderAtlas();});
   document.getElementById("refresh-data").addEventListener("click",refreshData);
   document.getElementById("auth-action").addEventListener("click",()=>state.auth.user?signOutWorkspace():authForm());
   document.getElementById("demo-banner-close").addEventListener("click",()=>document.getElementById("demo-banner").hidden=true);
@@ -955,5 +1129,5 @@ function setTheme(theme){document.documentElement.dataset.theme=theme;localStora
 document.addEventListener("DOMContentLoaded",setup);
 document.addEventListener("keydown",e=>{
   if(e.key==="/"&&!/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)){e.preventDefault();switchView("explore");setTimeout(()=>document.getElementById("asset-search").focus(),20);}
-  if((e.metaKey||e.ctrlKey)&&["1","2","3"].includes(e.key)){e.preventDefault();switchView(({"1":"pulse","2":"explore","3":"compare"})[e.key]);}
+  if((e.metaKey||e.ctrlKey)&&["1","2","3","4"].includes(e.key)){e.preventDefault();switchView(({"1":"pulse","2":"explore","3":"compare","4":"atlas"})[e.key]);}
 });
