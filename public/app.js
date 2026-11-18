@@ -23,13 +23,13 @@ const state = {
   theses: startupTheses(),
   activeFilter: "all",
   comparePeriod: "7D",
-  compareSymbols: ["BTC", "ETH", "SOL"],
+  compareSymbols: ["BTC", "ETH", "SOL"], compareAssetCache: {},
   comparePickerOpen: false,
   comparePickerQuery: "",
   historicalCache: {},
   historyPending: {},
   currentAsset: null,
-  auth: { configured: false, url: null, publishableKey: null, session: null, user: null, pendingEmail: null, syncing: false, syncRequested: false }
+  auth: { configured: false, url: null, publishableKey: null, session: null, user: null, pendingEmail: null, syncing: false, syncRequested: false, syncEpoch: 0, sessionEpoch: 0, syncJob: null }
 };
 
 function loadTheses(key = "cmc-lens-theses") {
@@ -43,7 +43,7 @@ function saveTheses(sync = true) {
   if (sync && state.auth.user) syncWorkspace().catch(() => updateStorageStatus("Saved locally · cloud sync will retry"));
 }
 function money(n, digits = 2) {
-  if (!Number.isFinite(Number(n))) return "—";
+  if (n === null || n === undefined || n === "" || !Number.isFinite(Number(n))) return "—";
   const v = Number(n);
   if (v >= 1e12) return `$${(v / 1e12).toFixed(2)}T`;
   if (v >= 1e9) return `$${(v / 1e9).toFixed(digits > 1 ? 2 : 1)}B`;
@@ -52,6 +52,8 @@ function money(n, digits = 2) {
   return `$${v.toFixed(4)}`;
 }
 function fmtPercent(v, plus = true) { const n = Number(v); return `${plus && n > 0 ? "+" : ""}${n.toFixed(2)}%`; }
+function hasNumericValue(v) { return v !== null && v !== undefined && v !== "" && Number.isFinite(Number(v)); }
+function fmtOptionalPercent(v, plus = true) { return hasNumericValue(v) ? fmtPercent(Number(v), plus) : "—"; }
 function escapeHtml(s = "") { return String(s).replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch])); }
 function safeDate(iso) { const d = new Date(iso); return Number.isNaN(d.getTime()) ? "Not set" : d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }); }
 function assetBySymbol(symbol) { return state.data.assets.find(a => a.symbol === symbol) || demoData.assets.find(a => a.symbol === symbol); }
@@ -67,11 +69,12 @@ function renderCategoryChart() {
   const host = document.getElementById("category-chart");
   if (!state.data.categories.length) { host.innerHTML = `<div class="category-empty">Category coverage is not available in this data response.</div>`; return; }
   host.innerHTML = state.data.categories.map(c => `<div class="cat-row"><span class="cat-name">${escapeHtml(c.name)}</span><div class="cat-track"><i style="--width:${Math.max(0, Math.min(100, c.advancing))}%"></i></div><span class="cat-value">${Math.round(c.advancing)}%</span></div>`).join("");
+  host.querySelectorAll(".cat-row").forEach((row,i)=>{const c=state.data.categories[i]||{};row.title="Covered "+(c.covered??c.total??"—")+" of "+(c.universe??"—")+"; missing "+(c.missing??"—");});
 }
 
 function renderMovements() {
   const rows = [...state.data.assets].filter(a => a.symbol !== "USDC" && a.symbol !== "USDT").sort((a, b) => Math.abs(b.change24h) - Math.abs(a.change24h)).slice(0, 4);
-  document.getElementById("movement-list").innerHTML = rows.map(a => `<div class="movement-row" data-asset="${escapeHtml(a.symbol)}" tabindex="0" role="button" aria-label="Open ${escapeHtml(a.name)} research"><div class="asset-cell"><span class="coin-icon" style="--coin-bg:${a.color}20;--coin-fg:${a.color}">${escapeHtml(a.symbol.slice(0, 1))}</span><span class="asset-name-wrap"><span class="asset-name">${escapeHtml(a.name)}</span><small class="asset-symbol">${escapeHtml(a.symbol)}</small></span></div><span class="move-value ${a.change24h >= 0 ? "up" : "down"}">${fmtPercent(a.change24h)}</span><span class="peer-context"><span class="peer-bar"><i style="--peer:${a.peerDelta}%"></i></span><span class="peer-text">${escapeHtml(a.peers)}</span></span><span class="row-arrow">↗</span></div>`).join("");
+  document.getElementById("movement-list").innerHTML = rows.map(a => `<div class="movement-row" data-asset="${escapeHtml(a.symbol)}" tabindex="0" role="button" aria-label="Open ${escapeHtml(a.name)} research"><div class="asset-cell"><span class="coin-icon" style="--coin-bg:${a.color}20;--coin-fg:${a.color}">${escapeHtml(a.symbol.slice(0, 1))}</span><span class="asset-name-wrap"><span class="asset-name">${escapeHtml(a.name)}</span><small class="asset-symbol">${escapeHtml(a.symbol)}</small></span></div><span class="move-value ${hasNumericValue(a.change24h) ? (Number(a.change24h) >= 0 ? "up" : "down") : ""}">${fmtOptionalPercent(a.change24h)}</span><span class="peer-context"><span class="peer-bar"><i style="--peer:${a.peerDelta}%"></i></span><span class="peer-text">${escapeHtml(a.peers)}</span></span><span class="row-arrow">↗</span></div>`).join("");
   document.querySelectorAll(".movement-row").forEach(el => {
     el.addEventListener("click", () => showAsset(el.dataset.asset));
     el.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); showAsset(el.dataset.asset); } });
@@ -150,18 +153,23 @@ function render() {
   const btcChangeAvailable = g.btcDominanceChange24h !== null && g.btcDominanceChange24h !== undefined && Number.isFinite(Number(g.btcDominanceChange24h));
   btc.className = `metric-change ${btcChangeAvailable ? (g.btcDominanceChange24h >= 0 ? "up" : "down") : ""}`;
   btc.innerHTML = btcChangeAvailable ? `<span>${g.btcDominanceChange24h >= 0 ? "↗" : "↘"}</span> ${fmtPercent(g.btcDominanceChange24h)}` : "24h change unavailable";
-  const breadthAvailable = g.breadth !== null && g.breadth !== undefined && Number.isFinite(Number(g.breadth));
-  const breadthTotal = Number(g.breadthTotal) > 0 ? Number(g.breadthTotal) : state.data.assets.length;
-  const breadthCount = Number.isFinite(Number(g.breadthCount)) ? Number(g.breadthCount) : state.data.assets.filter(a => Number(a.change24h) > 0).length;
+  const breadthAvailable = hasNumericValue(g.breadth);
+  const breadthTotal = hasNumericValue(g.breadthTotal) ? Number(g.breadthTotal) : state.data.assets.filter(a=>hasNumericValue(a.change24h)).length;
+  const breadthCount = hasNumericValue(g.breadthCount) ? Number(g.breadthCount) : state.data.assets.filter(a=>hasNumericValue(a.change24h)&&Number(a.change24h)>0).length;
+  const declining = hasNumericValue(g.breadthDeclining) ? Number(g.breadthDeclining) : null;
+  const flat = Object.prototype.hasOwnProperty.call(g,"breadthFlat") ? (hasNumericValue(g.breadthFlat)?Number(g.breadthFlat):null) : (declining!==null&&breadthTotal>=breadthCount+declining?breadthTotal-breadthCount-declining:null);
+  const universe = hasNumericValue(g.breadthUniverse) ? Number(g.breadthUniverse) : breadthTotal;
+  const missing = Object.prototype.hasOwnProperty.call(g,"breadthMissing") ? (hasNumericValue(g.breadthMissing)?Number(g.breadthMissing):null) : (hasNumericValue(g.breadthUniverse)&&hasNumericValue(g.breadthTotal)?Math.max(0,universe-breadthTotal):null);
+  const coverage = hasNumericValue(g.breadthCoverage) ? Number(g.breadthCoverage) : (universe>0?breadthTotal/universe*100:null);
   document.getElementById("breadth-value").textContent = breadthAvailable ? String(breadthCount) : "—";
   document.getElementById("breadth-total").textContent = String(breadthTotal);
   document.getElementById("breadth-advancing").textContent = String(breadthCount);
-  document.getElementById("breadth-declining").textContent = String(Math.max(0, breadthTotal - breadthCount));
-  document.getElementById("breadth-scope").textContent = state.data.mode === "live" ? "TOP 100" : "DEMO SAMPLE";
+  document.getElementById("breadth-declining").textContent = declining===null ? "—" : String(declining);
+  const breadthLegend=document.querySelector(".breadth-legend");
+  if(breadthLegend)breadthLegend.innerHTML="<span>Advancing <b>"+breadthCount+"</b></span><span>Declining <b>"+(declining===null?"—":declining)+"</b></span><span>Flat <b>"+(flat===null?"—":flat)+"</b></span><span>Missing <b>"+(missing===null?"—":missing)+"</b></span>";
+  document.getElementById("breadth-scope").textContent = state.data.mode === "live" ? (universe>breadthTotal ? "CMC "+breadthTotal+"/"+universe : "CMC COVERED SET") : "DEMO SAMPLE";
   const breadthInfo = document.getElementById("breadth-info");
-  breadthInfo.dataset.tip = state.data.mode === "live"
-    ? "Breadth counts assets with positive 24h change in CoinMarketCap's top 100 by market capitalization."
-    : "Breadth counts positive 24h moves across this illustrative demo asset sample. It does not describe the full crypto market.";
+  breadthInfo.dataset.tip = state.data.mode === "live" ? "Breadth uses "+breadthTotal+" covered CMC assets from "+universe+" queried ("+(coverage===null?"coverage unavailable":coverage.toFixed(0)+"% coverage")+"); "+(declining===null?"declining count unavailable":declining+" declining")+", "+(flat===null?"flat count unavailable":flat+" flat")+", "+(missing===null?"missing count unavailable":missing+" missing")+"." : "Breadth counts positive 24h moves across this illustrative demo asset sample. It does not describe the full crypto market.";
   breadthInfo.title = breadthInfo.dataset.tip;
   const ring = document.getElementById("breadth-ring");
   const breadth = breadthAvailable ? Math.max(0,Math.min(100,g.breadth)) : 0;
@@ -169,16 +177,19 @@ function render() {
   ring.style.borderBottomColor = breadth > 70 ? "var(--lime)" : "var(--surface-3)";
   const btcAsset = state.data.assets.find(a => a.symbol === "BTC");
   const narrative = document.getElementById("breadth-narrative");
-  narrative.innerHTML = !breadthAvailable ? "Market breadth is unavailable in this response." : btcAsset
-    ? `Bitcoin is ${Number(btcAsset.change24h) >= 0 ? "up" : "down"} <b>${Math.abs(Number(btcAsset.change24h)).toFixed(2)}%</b>, while <b>${breadthCount} of ${breadthTotal}</b> tracked assets are advancing. Breadth adds context to the move; it does not identify its cause.`
-    : `<b>${breadthCount} of ${breadthTotal}</b> tracked assets are advancing. Breadth adds context to the move; it does not identify its cause.`;
-  document.getElementById("breadth-method").textContent = breadthAvailable ? `Positive 24h change · ${breadthTotal} ${state.data.mode === "live" ? "CMC assets by market cap" : "illustrative demo assets"}` : "No usable asset coverage in this response";
+  const btcMove = hasNumericValue(btcAsset?.change24h) ? "Bitcoin is "+(Number(btcAsset.change24h)>=0?"up":"down")+" <b>"+Math.abs(Number(btcAsset.change24h)).toFixed(2)+"%</b>, while " : "";
+  narrative.innerHTML = !breadthAvailable ? "Market breadth is unavailable in this response." : btcMove+"<b>"+breadthCount+" of "+breadthTotal+"</b> covered assets are advancing; "+(declining===null?"declines unavailable":declining+" declining")+", "+(flat===null?"flat count unavailable":flat+" flat")+", "+(missing===null?"missing count unavailable":missing+" missing")+" ("+(coverage===null?"coverage unavailable":coverage.toFixed(0)+"% coverage")+"). Breadth adds context to the move; it does not identify its cause."; 
+  document.getElementById("breadth-method").textContent = breadthAvailable ? "Positive 24h change · "+breadthTotal+" covered / "+universe+" queried "+(state.data.mode==="live"?"CMC assets":"illustrative demo assets") : "No usable asset coverage in this response";
   document.getElementById("market-timestamp").textContent = state.data.mode === "live" && state.data.retrievedAt
     ? `Retrieved ${new Date(state.data.retrievedAt).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"})}` : "Illustrative demo snapshot";
   const sentiment = g.sentiment;
   const hasSentiment = sentiment !== null && sentiment !== undefined && Number.isFinite(Number(sentiment));
   document.getElementById("sentiment-score").textContent = hasSentiment ? String(sentiment) : "—";
-  document.getElementById("sentiment-label").textContent = hasSentiment ? (sentiment >= 65 ? "Greed signal" : sentiment <= 35 ? "Fear signal" : "Mixed sentiment") : "No live source enabled";
+  const sentimentMetadata=g.sentimentMetadata||{};
+  const sentimentClassification=sentimentMetadata.classification||g.sentimentClassification||(hasSentiment?(sentiment>=65?"Greed signal":sentiment<=35?"Fear signal":"Mixed sentiment"):"No live source enabled");
+  document.getElementById("sentiment-label").textContent=sentimentClassification;
+  const sentimentFoot=document.querySelector(".sentiment-card .metric-foot");
+  if(sentimentFoot){const source=sentimentMetadata.source||g.sentimentSource||(hasSentiment?"CoinMarketCap":"source unavailable");const timestamp=sentimentMetadata.observedAt||g.sentimentObservedAt||null;sentimentFoot.textContent="context only · "+source+(timestamp?" · "+new Date(timestamp).toLocaleString():" · timestamp unavailable");}
   document.getElementById("sentiment-marker").style.left = hasSentiment ? `${Math.max(0,Math.min(100,Number(sentiment)))}%` : "0%";
   document.getElementById("sentiment-marker").style.display = hasSentiment ? "block" : "none";
   const dateEl = document.getElementById("local-date");
@@ -216,16 +227,84 @@ function escapeClose(e) { if (e.key === "Escape") closeModal(); else document.ad
 function closeModal() { const b=document.getElementById("modal-backdrop");b.classList.remove("open");b.setAttribute("aria-hidden","true");document.body.style.overflow=""; }
 function toast(message, error=false) { const el=document.createElement("div");el.className=`toast ${error?"error":""}`;el.innerHTML=`<i></i><span>${escapeHtml(message)}</span>`;document.getElementById("toast-region").append(el);setTimeout(()=>el.remove(),3400); }
 
-function thesisForm() {
+function compareAssetBySelection(selection) { return state.data.assets.find(a=>String(a.id)===String(selection)) || state.compareAssetCache?.[String(selection)] || state.data.assets.find(a=>a.symbol===selection) || null; }
+function normalizeCompareSelections() { state.compareAssetCache ||= {}; const seen=new Set(); state.compareSymbols=state.compareSymbols.map(selection=>{const asset=compareAssetBySelection(selection);if(!asset)return null;state.compareAssetCache[String(asset.id)]=asset;return String(asset.id);}).filter(id=>{if(!id||seen.has(id))return false;seen.add(id);return true;}); }
+
+function comparisonThesisForm() {
+  normalizeCompareSelections();
+  const selections=[...state.compareSymbols];
+  const assets=selections.map(compareAssetBySelection);
+  const unique=assets.filter((a,i)=>a&&assets.findIndex(b=>String(b?.id)===String(a.id))===i);
+  if(unique.length<2||unique.length!==assets.length||unique.some(a=>!/^\d{1,12}$/.test(String(a.id)))){
+    toast("Select at least two distinct CMC assets before saving this comparison.",true);return;
+  }
+  const key=`${state.comparePeriod}:${state.compareSymbols.join(",")}`;
+  const cachedHistory=state.historicalCache[key];
+  const historyById=new Map((cachedHistory||[]).map(row=>{const asset=compareAssetBySelection(row.symbol);return [String(asset?.id||""),row];}));
+  const metricCount=field=>unique.filter(a=>field==="peerContext"?Boolean(a.peers):hasNumericValue(a[field])).length;
+  const comparison={
+    period:state.comparePeriod,
+    periodLabel:({ "7D":"7 days","30D":"30 days","90D":"90 days" })[state.comparePeriod]||state.comparePeriod,
+    currency:"USD",
+    sourceProvider:state.data.mode==="live"?"coinmarketcap":"demo",
+    capturedAt:new Date().toISOString(),
+    sourceObservedAt:state.data.source?.observedAt??null,
+    retrievedAt:state.data.retrievedAt??null,
+    coverage:{
+      selectedAssets:selections.length,
+      availableAssets:unique.length,
+      metrics:{price:metricCount("price"),change24h:metricCount("change24h"),marketCap:metricCount("marketCap"),volume24h:metricCount("volume24h"),peerContext:metricCount("peerContext")}
+    },
+    history:{
+      status:state.data.mode!=="live"?"not_requested":cachedHistory?"loaded":"unloaded",
+      sourceProvider:state.data.mode==="live"?"coinmarketcap":"demo",
+      period:state.comparePeriod,
+      assets:unique.map(a=>{
+        const row=historyById.get(String(a.id));
+        const points=(row?.series||[]).filter(p=>hasNumericValue(p.price)&&p.timestamp).map(p=>({timestamp:p.timestamp,price:Number(p.price)}));
+        return {id:String(a.id),status:points.length?"loaded":"unavailable",points};
+      })
+    },
+    assets:unique.map(a=>({
+      id:String(a.id),name:a.name,symbol:a.symbol,
+      price:hasNumericValue(a.price)?Number(a.price):null,
+      change24h:hasNumericValue(a.change24h)?Number(a.change24h):null,
+      marketCap:hasNumericValue(a.marketCap)?Number(a.marketCap):null,
+      volume24h:hasNumericValue(a.volume24h)?Number(a.volume24h):null,
+      peerContext:a.peers??null,
+      quoteObservedAt:a.observedAt??null
+    }))
+  };
+  thesisForm({assets:unique,primaryId:String(unique[0].id),comparison});
+}
+
+function savedComparisonMarkup(comparison) {
+  if(!comparison||!Array.isArray(comparison.assets)||!comparison.assets.length)return "";
+  const rows=comparison.assets.map(a=>{
+    const history=(comparison.history?.assets||[]).find(row=>String(row.id)===String(a.id));
+    const points=history?.points||[];
+    const historySummary=history?.status==="loaded"
+      ? `Historical points: ${points.length} · ${points[0]?.timestamp||"time unavailable"} → ${points[points.length-1]?.timestamp||"time unavailable"}.`
+      : "Historical points were not available when this comparison was saved.";
+    return `<div class="evidence-row"><i></i><div><strong>${escapeHtml(a.name||a.symbol||"Asset")} <span style="color:var(--lime);font-family:var(--mono);font-weight:400">${escapeHtml(a.symbol||"")} · CMC #${escapeHtml(a.id||"—")}</span></strong><small>Price: ${a.price===null||a.price===undefined?"—":money(a.price,a.price<1?4:2)} · 24h: ${fmtOptionalPercent(a.change24h)} · Market cap: ${amountLabel(a.marketCap)} · 24h volume: ${amountLabel(a.volume24h)}.</small><small>Peer context: ${escapeHtml(a.peerContext||"not supplied")} · Quote timestamp: ${escapeHtml(a.quoteObservedAt||"not supplied")}.</small><small>${escapeHtml(historySummary)}</small></div></div>`;
+  }).join("");
+  const coverage=comparison.coverage||{},metrics=coverage.metrics||{};
+  const coverageDetail=`Coverage: ${coverage.availableAssets??comparison.assets.length}/${coverage.selectedAssets??comparison.assets.length} selected assets · price ${metrics.price??"—"}, 24h change ${metrics.change24h??"—"}, market cap ${metrics.marketCap??"—"}, volume ${metrics.volume24h??"—"}, peer context ${metrics.peerContext??"—"} available.`;
+  const historyStatus=comparison.history?.status==="loaded"?"historical quotes loaded":comparison.history?.status==="unloaded"?"historical quotes not loaded":"historical quotes not requested";
+  return `<div class="detail-section" data-saved-comparison><h3>SAVED COMPARISON · ${escapeHtml(comparison.periodLabel||comparison.period||"Original period")}</h3><div class="detail-note">Captured ${escapeHtml(comparison.capturedAt||"")} · ${escapeHtml(comparison.currency||"USD")} · ${escapeHtml(comparison.sourceProvider||"source unavailable")}. ${escapeHtml(coverageDetail)} ${escapeHtml(historyStatus)}. Source observed ${escapeHtml(comparison.sourceObservedAt||"time unavailable")} · retrieved ${escapeHtml(comparison.retrievedAt||"time unavailable")}.</div><div class="detail-evidence">${rows}</div></div>`;
+}
+
+function thesisForm({assets=state.data.assets,primaryId=null,comparison=null}={}) {
+  const options=[...assets];
   const date = new Date(); date.setDate(date.getDate()+7);
   const dateValue = date.toISOString().slice(0,10);
-  openModal(`<div class="modal-head"><div><div class="panel-kicker">A RECORD YOU CAN RETURN TO</div><h2 id="modal-title">Start a thesis</h2><p>Write down the view and the evidence you have today.</p></div><button id="modal-close" class="modal-close" aria-label="Close">×</button></div><form class="thesis-form" id="thesis-form"><div class="field"><label for="thesis-question">WHAT ARE YOU TRYING TO UNDERSTAND?</label><input id="thesis-question" name="title" maxlength="90" placeholder="e.g. Is SOL outperforming other layer 1s?" required /></div><div class="form-grid"><div class="field"><label for="thesis-asset">PRIMARY ASSET</label><select id="thesis-asset" name="asset">${state.data.assets.map(a=>`<option value="${escapeHtml(a.symbol)}">${escapeHtml(a.name)} · ${escapeHtml(a.symbol)}</option>`).join("")}</select></div><div class="field"><label for="thesis-review">REVIEW AFTER</label><select id="thesis-review" name="horizon"><option value="7">7 days</option><option value="14">14 days</option><option value="30">30 days</option></select></div></div><div class="field"><label for="thesis-view">YOUR CURRENT VIEW <span style="color:var(--quiet)">· OPTIONAL</span></label><textarea id="thesis-view" name="view" maxlength="600" placeholder="What do you think is happening? What might change your mind?"></textarea><span class="field-help">Your view is saved in this browser. CMC Lens does not generate buy or sell instructions.</span></div><div class="field"><label for="thesis-condition">WHAT WOULD CHANGE YOUR VIEW? <span style="color:var(--quiet)">· OPTIONAL</span></label><input id="thesis-condition" name="condition" maxlength="180" placeholder="e.g. Relative strength fades against the L1 group" /></div><div class="form-actions"><button type="button" class="form-cancel" id="form-cancel">Cancel</button><button type="submit" class="primary-button">Save research record <span>→</span></button></div></form>`);
+  openModal(`<div class="modal-head"><div><div class="panel-kicker">A RECORD YOU CAN RETURN TO</div><h2 id="modal-title">Start a thesis</h2><p>Write down the view and the evidence you have today.</p></div><button id="modal-close" class="modal-close" aria-label="Close">×</button></div><form class="thesis-form" id="thesis-form"><div class="field"><label for="thesis-question">WHAT ARE YOU TRYING TO UNDERSTAND?</label><input id="thesis-question" name="title" maxlength="90" placeholder="e.g. Is SOL outperforming other layer 1s?" required /></div><div class="form-grid"><div class="field"><label for="thesis-asset">PRIMARY ASSET</label><select id="thesis-asset" name="asset">${options.map(a=>`<option value="${escapeHtml(a.id)}"${String(a.id)===String(primaryId||options[0]?.id)?" selected":""}>${escapeHtml(a.name)} · ${escapeHtml(a.symbol)} · CMC #${escapeHtml(a.id)}</option>`).join("")}</select></div><div class="field"><label for="thesis-review">REVIEW AFTER</label><select id="thesis-review" name="horizon"><option value="7">7 days</option><option value="14">14 days</option><option value="30">30 days</option></select></div></div><div class="field"><label for="thesis-view">YOUR CURRENT VIEW <span style="color:var(--quiet)">· OPTIONAL</span></label><textarea id="thesis-view" name="view" maxlength="600" placeholder="What do you think is happening? What might change your mind?"></textarea><span class="field-help">Your view is saved in this browser. CMC Lens does not generate buy or sell instructions.</span></div><div class="field"><label for="thesis-condition">WHAT WOULD CHANGE YOUR VIEW? <span style="color:var(--quiet)">· OPTIONAL</span></label><input id="thesis-condition" name="condition" maxlength="180" placeholder="e.g. Relative strength fades against the L1 group" /></div><div class="form-actions"><button type="button" class="form-cancel" id="form-cancel">Cancel</button><button type="submit" class="primary-button">Save research record <span>→</span></button></div></form>`);
   document.getElementById("form-cancel").addEventListener("click",closeModal);
   document.getElementById("thesis-form").addEventListener("submit", e=>{
-    e.preventDefault(); const fd=new FormData(e.currentTarget); const symbol=String(fd.get("asset")); const a=assetBySymbol(symbol); const d=new Date();
+    e.preventDefault(); const fd=new FormData(e.currentTarget); const assetId=String(fd.get("asset")); const a=options.find(row=>String(row.id)===assetId)||null; const symbol=a?.symbol||""; const d=new Date();
     const review=new Date();review.setDate(review.getDate()+Number(fd.get("horizon")));
     const source=state.data.mode==="live"?"CoinMarketCap":"Demo dataset";
-    const t={id:crypto.randomUUID(),title:String(fd.get("title")).trim(),assetId:a?.id||null,assetSymbol:symbol,assetName:a?.name||symbol,view:String(fd.get("view")||"").trim(),condition:String(fd.get("condition")||"").trim(),createdAt:d.toISOString(),reviewAt:review.toISOString(),status:"open",baselineSnapshotId:crypto.randomUUID(),baselineSnapshot:{sourceProvider:source==="CoinMarketCap"?"coinmarketcap":"demo",sourceEndpoint:source==="CoinMarketCap"?"/v3/cryptocurrency/quotes/latest":null,sourceObservedAt:a?.observedAt||state.data.source?.observedAt||null,capturedAt:d.toISOString(),currency:"USD",metrics:{price:a?.price??null,change24h:a?.change24h??null,marketCap:a?.marketCap??null,volume24h:a?.volume24h??null,peerContext:a?.peers||null},coverage:source==="CoinMarketCap"?"complete":"partial",limitations:source==="CoinMarketCap"?"Quote snapshot only; it does not establish the cause of a price move.":"Illustrative demo values, not live market evidence."},evidence:[{label:`${symbol} 24h change`,value:fmtPercent(a?.change24h||0),detail:`Observed at ${d.toISOString()} · source timestamp ${a?.observedAt||state.data.source?.observedAt||"not supplied"}.`,source},{label:`${symbol} price`,value:money(a?.price,a?.price<1?4:2),detail:"Quote currency USD · source value captured when the thesis was recorded.",source},{label:"Market capitalization",value:amountLabel(a?.marketCap),detail:"CMC-reported market capitalization at the baseline capture.",source},{label:"Research context",value:a?.peers||"Market",detail:"Peer context is shown as a prompt for investigation, not as a prediction."}],reviews:[]};
+    const t={id:crypto.randomUUID(),title:String(fd.get("title")).trim(),assetId:a?.id||null,assetSymbol:symbol,assetName:a?.name||symbol,view:String(fd.get("view")||"").trim(),condition:String(fd.get("condition")||"").trim(),createdAt:d.toISOString(),reviewAt:review.toISOString(),status:"open",baselineSnapshotId:crypto.randomUUID(),baselineSnapshot:{...(comparison?{comparison}:{}),sourceProvider:source==="CoinMarketCap"?"coinmarketcap":"demo",sourceEndpoint:source==="CoinMarketCap"?"/v3/cryptocurrency/quotes/latest":null,sourceObservedAt:a?.observedAt??null,capturedAt:d.toISOString(),currency:"USD",metrics:{price:a?.price??null,change24h:a?.change24h??null,marketCap:a?.marketCap??null,volume24h:a?.volume24h??null,peerContext:a?.peers||null},coverage:source==="CoinMarketCap"?"complete":"partial",limitations:source==="CoinMarketCap"?"Quote snapshot only; it does not establish the cause of a price move.":"Illustrative demo values, not live market evidence."},evidence:[{label:`${symbol} 24h change`,value:fmtOptionalPercent(a?.change24h),detail:`Observed at ${d.toISOString()} · source timestamp ${a?.observedAt??"not supplied"}.`,source},{label:`${symbol} price`,value:money(a?.price,a?.price<1?4:2),detail:"Quote currency USD · source value captured when the thesis was recorded.",source},{label:"Market capitalization",value:amountLabel(a?.marketCap),detail:"CMC-reported market capitalization at the baseline capture.",source},{label:"Research context",value:a?.peers||"Market",detail:"Peer context is shown as a prompt for investigation, not as a prediction."}],reviews:[]};
     state.theses.unshift(t);saveTheses();renderThesisCards();closeModal();toast("Thesis saved with a dated evidence snapshot.");
   });
 }
@@ -235,8 +314,8 @@ function showThesis(id) {
   const evidence=(t.evidence||[]).map(e=>`<div class="evidence-row"><i></i><div><strong>${escapeHtml(e.label)} <span style="color:var(--lime);font-family:var(--mono);font-weight:400">${escapeHtml(e.value)}</span></strong><small>${escapeHtml(e.detail)} Source: ${escapeHtml(e.source)}.</small></div></div>`).join("");
   const review=(t.reviews||[]).map(r=>`<div class="evidence-row"><i style="background:var(--blue)"></i><div><strong>Review · ${safeDate(r.date)} <span style="color:var(--blue);font-family:var(--mono);font-weight:400">${escapeHtml(r.result||"Observation")}</span></strong><small>${escapeHtml(r.note)}</small>${r.snapshot?.derivedMetrics?.priceChangeSinceBaselinePct!==null&&r.snapshot?.derivedMetrics?.priceChangeSinceBaselinePct!==undefined?`<small>Price change since baseline: ${fmtPercent(r.snapshot.derivedMetrics.priceChangeSinceBaselinePct)} · ${escapeHtml(r.snapshot.sourceProvider||"source unavailable")}</small>`:""}</div></div>`).join("");
   const due=t.status!=="reviewed"&&new Date(t.reviewAt)<=new Date();
-  openModal(`<div class="modal-head"><div><div class="panel-kicker">${escapeHtml(t.assetSymbol||"MARKET")} · ${escapeHtml(statusLabel(t).toUpperCase())}</div><h2 id="modal-title">${escapeHtml(t.title)}</h2><p>Logged ${safeDate(t.createdAt)} · Review ${safeDate(t.reviewAt)}</p></div><button id="modal-close" class="modal-close" aria-label="Close">×</button></div><div class="detail-content"><div class="detail-section"><h3>THE VIEW AT THE TIME</h3><div class="detail-note">${escapeHtml(t.view||"No written explanation added yet.")}${t.condition?`<br/><br/><strong style="color:var(--text-2)">Condition to revisit:</strong> ${escapeHtml(t.condition)}`:""}</div></div><div class="detail-section"><h3>ORIGINAL EVIDENCE · PRESERVED</h3><div class="detail-evidence">${evidence||"<div class='detail-note'>No evidence snapshot attached.</div>"}</div></div>${review?`<div class="detail-section"><h3>REVIEW HISTORY</h3><div class="detail-evidence">${review}</div></div>`:""}<div class="detail-actions"><button class="danger-button" id="delete-thesis">Delete record</button><div>${t.status!=="reviewed"?`<button class="primary-button" id="review-thesis">${due?"Review this thesis":"Add a review"} <span>→</span></button>`:""}</div></div></div>`);
-  document.getElementById("delete-thesis").addEventListener("click",async()=>{if(!window.confirm("Delete this research record and its synced evidence?"))return;try{if(state.auth.user)await sbRequest(`/rest/v1/theses?id=eq.${encodeURIComponent(id)}`,{method:"DELETE"});state.theses=state.theses.filter(x=>x.id!==id);saveTheses(false);renderThesisCards();closeModal();toast("Research record deleted.");}catch{toast("The record could not be deleted from your synced workspace.",true);}});
+  openModal(`<div class="modal-head"><div><div class="panel-kicker">${escapeHtml(t.assetSymbol||"MARKET")} · ${escapeHtml(statusLabel(t).toUpperCase())}</div><h2 id="modal-title">${escapeHtml(t.title)}</h2><p>Logged ${safeDate(t.createdAt)} · Review ${safeDate(t.reviewAt)}</p></div><button id="modal-close" class="modal-close" aria-label="Close">×</button></div><div class="detail-content"><div class="detail-section"><h3>THE VIEW AT THE TIME</h3><div class="detail-note">${escapeHtml(t.view||"No written explanation added yet.")}${t.condition?`<br/><br/><strong style="color:var(--text-2)">Condition to revisit:</strong> ${escapeHtml(t.condition)}`:""}</div></div><div class="detail-section"><h3>ORIGINAL EVIDENCE · PRESERVED</h3><div class="detail-evidence">${evidence||"<div class='detail-note'>No evidence snapshot attached.</div>"}</div></div>${savedComparisonMarkup(t.baselineSnapshot?.comparison)}${review?`<div class="detail-section"><h3>REVIEW HISTORY</h3><div class="detail-evidence">${review}</div></div>`:""}<div class="detail-actions"><button class="danger-button" id="delete-thesis">Delete record</button><div>${t.status!=="reviewed"?`<button class="primary-button" id="review-thesis">${due?"Review this thesis":"Add a review"} <span>→</span></button>`:""}</div></div></div>`);
+  document.getElementById("delete-thesis").addEventListener("click",async()=>{if(!window.confirm("Delete this research record and its synced evidence?"))return;const owner=state.auth.user?.id||null,epoch=state.auth.sessionEpoch,token=state.auth.session?.access_token;try{if(owner)await sbRequest("/rest/v1/theses?id=eq."+encodeURIComponent(id),{method:"DELETE",token});if(state.auth.sessionEpoch!==epoch||(state.auth.user?.id||null)!==owner)return;state.theses=state.theses.filter(x=>x.id!==id);saveTheses(false);renderThesisCards();closeModal();toast("Research record deleted.");}catch{if(state.auth.sessionEpoch===epoch&&(state.auth.user?.id||null)===owner)toast("The record could not be deleted from your synced workspace.",true);}});
   const rb=document.getElementById("review-thesis"); if(rb)rb.addEventListener("click",()=>reviewThesis(id));
 }
 
@@ -247,7 +326,7 @@ async function reviewThesis(id) {
   openModal(loading);
   let response=null;
   if(isLive){try{const r=await fetch(`/api/market?view=asset&id=${encodeURIComponent(t.assetId)}`,{headers:{Accept:"application/json"}});if(!r.ok)throw new Error("Fresh market quote unavailable");response=await r.json();}catch{response=null;}}
-  const live=!!(isLive&&response?.asset);
+  const live=!!(isLive&&response?.asset&&String(response.asset.id)===String(t.assetId)&&hasNumericValue(response.asset.price));
   const current=live?response.asset:(state.data.mode==="demo"?(state.data.assets.find(a=>String(a.id)===String(t.assetId)||a.symbol===t.assetSymbol)||null):null);
   const baseline=t.baselineSnapshot||{};
   const baselineMetrics=baseline.metrics||{};
@@ -255,11 +334,14 @@ async function reviewThesis(id) {
   const baselinePrice=baselineMetrics.price!==null&&baselineMetrics.price!==undefined&&Number.isFinite(Number(baselineMetrics.price))?Number(baselineMetrics.price):parseMetric(t.evidence?.find(x=>x.label===`${t.assetSymbol} price`)?.value);
   const baselineCap=baselineMetrics.marketCap!==null&&baselineMetrics.marketCap!==undefined&&Number.isFinite(Number(baselineMetrics.marketCap))?Number(baselineMetrics.marketCap):parseMetric(t.evidence?.find(x=>x.label==="Market capitalization")?.value);
   const currentPrice=current?.price??null,currentCap=current?.marketCap??null;
-  const priceDelta=currentPrice!==null&&currentPrice!==undefined&&baselinePrice!==null&&baselinePrice!==undefined&&Number.isFinite(Number(currentPrice))&&Number.isFinite(Number(baselinePrice))&&Number(baselinePrice)!==0?((Number(currentPrice)-Number(baselinePrice))/Number(baselinePrice))*100:null;
+  const baselineProvider=baseline.sourceProvider||null;
+  const reviewProvider=live?"coinmarketcap":state.data.mode==="demo"?"demo":"unavailable";
+  const sameProvider=!!baselineProvider&&baselineProvider===reviewProvider;
+  const priceDelta=sameProvider&&hasNumericValue(currentPrice)&&hasNumericValue(baselinePrice)&&Number(baselinePrice)!==0?((Number(currentPrice)-Number(baselinePrice))/Number(baselinePrice))*100:null;
   const capturedAt=new Date().toISOString();
-  const observedAt=live?(response.source?.observedAt||current.observedAt||response.retrievedAt):null;
+  const observedAt=live?(response.source?.observedAt??current.observedAt??null):null;
   const currentLabel=live?"LATEST CMC QUOTE":state.data.mode==="demo"?"DEMO PREVIEW":"LATEST QUOTE UNAVAILABLE";
-  const snapshot={sourceProvider:live?"coinmarketcap":state.data.mode==="demo"?"demo":"unavailable",sourceEndpoint:live?"/v3/cryptocurrency/quotes/latest":null,sourceObservedAt:observedAt,capturedAt,currency:"USD",coverage:live?"partial":"unavailable",limitations:live?"Current quote compared with the preserved baseline; this is not a thesis score.":"No live source was available for this review.",metrics:{price:currentPrice,marketCap:currentCap,change24h:current?.change24h??null,volume24h:current?.volume24h??null},derivedMetrics:{priceChangeSinceBaselinePct:priceDelta},baselineSnapshotId:t.baselineSnapshotId||null};
+  const snapshot={sourceProvider:reviewProvider,retrievedAt:live?(response.retrievedAt||null):null,sourceEndpoint:live?"/v3/cryptocurrency/quotes/latest":null,sourceObservedAt:observedAt,capturedAt,currency:"USD",coverage:live?"partial":"unavailable",limitations:!sameProvider?"Source does not match the original baseline; no price delta is derived.":live?"Current quote compared with the preserved baseline; this is not a thesis score.":"No live source was available for this review.",metrics:{price:currentPrice,marketCap:currentCap,change24h:current?.change24h??null,volume24h:current?.volume24h??null},derivedMetrics:{priceChangeSinceBaselinePct:priceDelta},baselineSnapshotId:t.baselineSnapshotId||null};
   const baselineLabel=baseline.capturedAt||t.createdAt;
   const formatPrice=value=>value===null||value===undefined?"—":money(Number(value),Number(value)<1?4:2);
   const formatCap=value=>value===null||value===undefined?"—":amountLabel(Number(value));
@@ -271,38 +353,39 @@ async function reviewThesis(id) {
 function showAsset(symbol) {
   const a=assetBySymbol(symbol);if(!a)return;
   state.currentAsset=a;
-  const movementNote=a.note || `${a.symbol} has a ${a.change24h>=0?"positive":"negative"} reported 24-hour change.`;
-  openModal(`<div class="modal-head"><div><div class="panel-kicker">ASSET DOSSIER · ${escapeHtml(a.symbol)}</div><h2 id="modal-title">${escapeHtml(a.name)}</h2><p>Source context and peer movement, kept together.</p></div><button id="modal-close" class="modal-close" aria-label="Close">×</button></div><div class="detail-content"><div class="detail-metric-row"><div class="detail-metric"><small>PRICE · USD</small><strong>${money(a.price, a.price<1?4:2)}</strong></div><div class="detail-metric"><small>24H CHANGE</small><strong style="color:${a.change24h>=0?"var(--lime)":"var(--red)"}">${fmtPercent(a.change24h)}</strong></div><div class="detail-metric"><small>MARKET CAP</small><strong>${amountLabel(a.marketCap)}</strong></div></div><div class="detail-section"><h3>WHAT TO LOOK AT</h3><div class="detail-evidence"><div class="evidence-row"><i></i><div><strong>${escapeHtml(movementNote)}</strong><small>${escapeHtml(a.symbol)} is ${a.change24h>=0?"up":"down"} ${Math.abs(a.change24h).toFixed(2)}% over 24 hours. Peer context: ${escapeHtml(a.peers)}.</small></div></div><div class="evidence-row"><i style="background:var(--blue)"></i><div><strong>Volume context</strong><small>24h reported volume ${amountLabel(a.volume24h)}. Volume alone does not establish direction or cause.</small></div></div></div></div><div class="detail-section"><h3>RESEARCH LIMIT</h3><div class="detail-note">${state.data.mode==="live"?"Live CMC market data. Check the source timestamp before comparing." : "Demo values for interface preview only. These figures are illustrative and must not be relied on as current market data."}</div></div><div class="detail-actions"><span class="footer-attribution">Data provided by <a href="https://coinmarketcap.com/" target="_blank" rel="noreferrer">CoinMarketCap.com</a></span><div><button class="primary-button" id="asset-thesis">Start a thesis <span>→</span></button></div></div></div>`);
-  document.getElementById("asset-thesis").addEventListener("click",()=>{closeModal();setTimeout(()=>{thesisForm();document.getElementById("thesis-asset").value=a.symbol;},100);});
+  const movementNote=a.note || `${a.symbol} has a ${hasNumericValue(a.change24h)?(Number(a.change24h)>=0?"positive":"negative"):"unknown"} reported 24-hour change.`;
+  openModal(`<div class="modal-head"><div><div class="panel-kicker">ASSET DOSSIER · ${escapeHtml(a.symbol)}</div><h2 id="modal-title">${escapeHtml(a.name)}</h2><p>Source context and peer movement, kept together.</p></div><button id="modal-close" class="modal-close" aria-label="Close">×</button></div><div class="detail-content"><div class="detail-metric-row"><div class="detail-metric"><small>PRICE · USD</small><strong>${money(a.price, a.price<1?4:2)}</strong></div><div class="detail-metric"><small>24H CHANGE</small><strong style="color:${!hasNumericValue(a.change24h)?"var(--quiet)":Number(a.change24h)>=0?"var(--lime)":"var(--red)"}">${fmtOptionalPercent(a.change24h)}</strong></div><div class="detail-metric"><small>MARKET CAP</small><strong>${amountLabel(a.marketCap)}</strong></div></div><div class="detail-section"><h3>WHAT TO LOOK AT</h3><div class="detail-evidence"><div class="evidence-row"><i></i><div><strong>${escapeHtml(movementNote)}</strong><small>${escapeHtml(a.symbol)} is ${hasNumericValue(a.change24h)?(Number(a.change24h)>=0?"up":"down"):""} ${(hasNumericValue(a.change24h)?Math.abs(Number(a.change24h)).toFixed(2):"—")}% over 24 hours. Peer context: ${escapeHtml(a.peers)}.</small></div></div><div class="evidence-row"><i style="background:var(--blue)"></i><div><strong>Volume context</strong><small>24h reported volume ${amountLabel(a.volume24h)}. Volume alone does not establish direction or cause.</small></div></div></div></div><div class="detail-section"><h3>RESEARCH LIMIT</h3><div class="detail-note">${state.data.mode==="live"?"Live CMC market data. Check the source timestamp before comparing." : "Demo values for interface preview only. These figures are illustrative and must not be relied on as current market data."}</div></div><div class="detail-actions"><span class="footer-attribution">Data provided by <a href="https://coinmarketcap.com/" target="_blank" rel="noreferrer">CoinMarketCap.com</a></span><div><button class="primary-button" id="asset-thesis">Start a thesis <span>→</span></button></div></div></div>`);
+  document.getElementById("asset-thesis").addEventListener("click",()=>{closeModal();setTimeout(()=>thesisForm({assets:[a],primaryId:String(a.id)}),100);});
 }
 
 function renderExplore(filter="") {
   const host=document.getElementById("asset-results");if(!host)return;
   const q=filter.trim().toLowerCase();const rows=state.data.assets.filter(a=>!q||a.name.toLowerCase().includes(q)||a.symbol.toLowerCase().includes(q)||a.id===q).slice(0,8);
   if(!q){host.innerHTML="";return;}
-  host.innerHTML=rows.map(a=>`<div class="asset-result" data-asset="${escapeHtml(a.symbol)}"><span class="coin-icon" style="--coin-bg:${a.color}20;--coin-fg:${a.color}">${escapeHtml(a.symbol.slice(0,1))}</span><span class="asset-cell"><span><span class="asset-name">${escapeHtml(a.name)}</span><small class="asset-symbol">${escapeHtml(a.symbol)}</small></span></span><span>${money(a.price,a.price<1?4:2)}</span><span class="move-value ${a.change24h>=0?"up":"down"}">${fmtPercent(a.change24h)}</span></div>`).join("")||`<div class="empty-theses">No matching asset in this ${state.data.mode==="live"?"search result":"demo sample"}.</div>`;
+  host.innerHTML=rows.map(a=>`<div class="asset-result" data-asset="${escapeHtml(a.symbol)}"><span class="coin-icon" style="--coin-bg:${a.color}20;--coin-fg:${a.color}">${escapeHtml(a.symbol.slice(0,1))}</span><span class="asset-cell"><span><span class="asset-name">${escapeHtml(a.name)}</span><small class="asset-symbol">${escapeHtml(a.symbol)}</small></span></span><span>${money(a.price,a.price<1?4:2)}</span><span class="move-value ${hasNumericValue(a.change24h)?(Number(a.change24h)>=0?"up":"down"):""}">${fmtOptionalPercent(a.change24h)}</span></div>`).join("")||`<div class="empty-theses">No matching asset in this ${state.data.mode==="live"?"search result":"demo sample"}.</div>`;
   host.querySelectorAll("[data-asset]").forEach(el=>el.addEventListener("click",()=>showAsset(el.dataset.asset)));
 }
 
 function renderComparePickerResults() {
   const host=document.getElementById("compare-search-results");if(!host)return;
   const q=state.comparePickerQuery.trim().toLowerCase();
-  const rows=state.data.assets.filter(a=>!state.compareSymbols.includes(a.symbol)&&(!q||a.name.toLowerCase().includes(q)||a.symbol.toLowerCase().includes(q)||String(a.id)===q)).slice(0,6);
+  const rows=state.data.assets.filter(a=>!state.compareSymbols.some(selection=>String(compareAssetBySelection(selection)?.id)===String(a.id))&&(!q||a.name.toLowerCase().includes(q)||a.symbol.toLowerCase().includes(q)||String(a.id)===q)).slice(0,6);
   if(!rows.length){host.innerHTML=`<div class="compare-picker-empty">${state.data.mode==="live"&&q.length>=2?"Searching CoinMarketCap…":"No matching assets in the loaded list."}</div>`;return;}
-  host.innerHTML=rows.map(a=>`<button class="compare-picker-option" data-compare-symbol="${escapeHtml(a.symbol)}"><span>${escapeHtml(a.name)}</span><small>${escapeHtml(a.symbol)} · ${money(a.price,a.price<1?4:2)}</small><b>＋</b></button>`).join("");
-  host.querySelectorAll("[data-compare-symbol]").forEach(el=>el.addEventListener("click",()=>{if(state.compareSymbols.length>=4){toast("Compare up to four assets at a time.");return;}state.compareSymbols.push(el.dataset.compareSymbol);state.comparePickerOpen=false;state.comparePickerQuery="";renderCompare();loadCompareHistory();}));
+  host.innerHTML=rows.map(a=>`<button class="compare-picker-option" data-compare-id="${escapeHtml(a.id)}"><span>${escapeHtml(a.name)}</span><small>${escapeHtml(a.symbol)} · ${money(a.price,a.price<1?4:2)}</small><b>＋</b></button>`).join("");
+  host.querySelectorAll("[data-compare-id]").forEach(el=>el.addEventListener("click",()=>{if(state.compareSymbols.length>=4){toast("Compare up to four assets at a time.");return;}state.compareAssetCache[String(el.dataset.compareId)]=state.data.assets.find(a=>String(a.id)===String(el.dataset.compareId));state.compareSymbols.push(el.dataset.compareId);state.comparePickerOpen=false;state.comparePickerQuery="";renderCompare();loadCompareHistory();}));
 }
 
 function renderCompare() {
-  const assets=state.compareSymbols.map(assetBySymbol).filter(Boolean);
+  normalizeCompareSelections();
+  const assets=state.compareSymbols.map(compareAssetBySelection).filter(Boolean);
   const colors=["var(--lime)","var(--blue)","var(--orange)","var(--red)"];
   const addDisabled=assets.length>=4?" disabled aria-disabled=\"true\"":"";
   const picker=state.comparePickerOpen?`<div class="compare-picker"><input id="compare-asset-search" aria-label="Search assets to compare" placeholder="Search name or symbol" value="${escapeHtml(state.comparePickerQuery)}" autocomplete="off"/><div id="compare-search-results" class="compare-picker-results"></div></div>`:"";
-  document.getElementById("compare-assets").innerHTML=assets.map((a,i)=>`<span class="compare-chip" style="--chip:${colors[i]}"><i></i>${escapeHtml(a.symbol)}<button data-remove-symbol="${a.symbol}" aria-label="Remove ${a.symbol}">×</button></span>`).join("")+`<button class="compare-chip" id="compare-add"${addDisabled}>＋ Add asset</button>`+picker;
+  document.getElementById("compare-assets").innerHTML=assets.map((a,i)=>`<span class="compare-chip" style="--chip:${colors[i]}"><i></i>${escapeHtml(a.symbol)}<button data-remove-asset-id="${escapeHtml(a.id)}" aria-label="Remove ${escapeHtml(a.symbol)}">×</button></span>`).join("")+`<button class="compare-chip" id="compare-add"${addDisabled}>＋ Add asset</button>`+picker;
   document.getElementById("compare-legend").innerHTML=assets.map((a,i)=>`<span><i style="--chip:${colors[i]}"></i>${escapeHtml(a.symbol)}</span>`).join("");
   drawCompareChart(assets, colors);
-  document.getElementById("compare-table").innerHTML=`<div class="compare-table-head"><span>ASSET</span><span>24H CHANGE</span><span>MARKET CAP</span><span>PEER CONTEXT</span></div>${assets.map((a,i)=>`<div class="compare-table-row"><span class="asset-cell"><i style="width:7px;height:7px;border-radius:50%;background:${colors[i]}"></i>${escapeHtml(a.name)} (${escapeHtml(a.symbol)})</span><span style="color:${a.change24h>=0?"var(--lime)":"var(--red)"}">${fmtPercent(a.change24h)}</span><span>${amountLabel(a.marketCap)}</span><span>${escapeHtml(a.peers)}</span></div>`).join("")}`;
-  document.querySelectorAll("[data-remove-symbol]").forEach(el=>el.addEventListener("click",()=>{state.compareSymbols=state.compareSymbols.filter(x=>x!==el.dataset.removeSymbol);renderCompare();loadCompareHistory();}));
+  document.getElementById("compare-table").innerHTML=`<div class="compare-table-head"><span>ASSET</span><span>24H CHANGE</span><span>MARKET CAP</span><span>PEER CONTEXT</span></div>${assets.map((a,i)=>`<div class="compare-table-row"><span class="asset-cell"><i style="width:7px;height:7px;border-radius:50%;background:${colors[i]}"></i>${escapeHtml(a.name)} (${escapeHtml(a.symbol)})</span><span style="color:${!hasNumericValue(a.change24h)?"var(--quiet)":Number(a.change24h)>=0?"var(--lime)":"var(--red)"}">${fmtOptionalPercent(a.change24h)}</span><span>${amountLabel(a.marketCap)}</span><span>${escapeHtml(a.peers)}</span></div>`).join("")}`;
+  document.querySelectorAll("[data-remove-asset-id]").forEach(el=>el.addEventListener("click",()=>{state.compareSymbols=state.compareSymbols.filter(x=>String(compareAssetBySelection(x)?.id)!==String(el.dataset.removeAssetId));renderCompare();loadCompareHistory();}));
   const add=document.getElementById("compare-add");
   if(add)add.addEventListener("click",()=>{if(state.compareSymbols.length>=4){toast("Compare up to four assets at a time.");return;}state.comparePickerOpen=!state.comparePickerOpen;state.comparePickerQuery="";renderCompare();if(state.comparePickerOpen){const input=document.getElementById("compare-asset-search");input.focus();renderComparePickerResults();}});
   const input=document.getElementById("compare-asset-search");
@@ -337,6 +420,7 @@ function demoSeries(asset, index) {
 }
 
 async function loadCompareHistory() {
+  normalizeCompareSelections();
   if(state.data.mode!=="live")return;
   const key=`${state.comparePeriod}:${state.compareSymbols.join(",")}`;
   if(state.historicalCache[key]){renderCompare();return;}
@@ -344,7 +428,7 @@ async function loadCompareHistory() {
   state.historyPending[key]=true;
   renderCompare();
   const rows=await Promise.all(state.compareSymbols.map(async symbol=>{
-    const asset=assetBySymbol(symbol);if(!asset)return {symbol,series:[]};
+    const asset=compareAssetBySelection(symbol);if(!asset)return {symbol,series:[]};
     try{const r=await fetch(`/api/market?view=history&id=${encodeURIComponent(asset.id)}&period=${state.comparePeriod}`,{headers:{Accept:"application/json"}});if(!r.ok)return {symbol,series:[]};const body=await r.json();return {symbol,series:Array.isArray(body.series)?body.series:[],retrievedAt:body.retrievedAt};}
     catch{return {symbol,series:[]};}
   }));
@@ -355,17 +439,17 @@ async function loadCompareHistory() {
 async function refreshData() {
   const b=document.getElementById("refresh-data");b.disabled=true;b.innerHTML='<span class="refresh-symbol">↻</span> Updating…';
   try { const r=await fetch("/api/market?view=overview",{headers:{Accept:"application/json"}}); if(!r.ok)throw new Error("Market data request failed"); const d=await r.json(); if(!d||!d.global||!Array.isArray(d.assets))throw new Error("Unexpected market response"); state.data=d;render();toast(d.mode==="live"?"Market context refreshed from CoinMarketCap.":"Demo data refreshed. Live API is not configured."); }
-  catch(e){toast("Market data could not be refreshed. Showing the labelled demo dataset.",true);state.data=demoData;render();}
+  catch(e){if(state.data.mode==="live"){toast("Refresh failed. Keeping the last successful live dataset and its source labels.",true);render();}else{toast("Market data could not be refreshed. Showing the labelled demo dataset.",true);state.data=demoData;render();}}
   finally{b.disabled=false;b.innerHTML='<span class="refresh-symbol">↻</span> Refresh data';}
 }
 
-async function sbRequest(path, {method="GET",body,token,prefer}={}) {
+async function sbRequest(path, {method="GET",body,token,prefer,signal}={}) {
   const auth=state.auth;
   if(!auth.configured)throw new Error("Account sync is not configured yet.");
   const headers={apikey:auth.publishableKey,Authorization:`Bearer ${token||auth.session?.access_token||auth.publishableKey}`,Accept:"application/json"};
   if(body!==undefined)headers["Content-Type"]="application/json";
   if(prefer)headers.Prefer=prefer;
-  const response=await fetch(`${auth.url.replace(/\/$/,"")}${path}`,{method,headers,body:body===undefined?undefined:JSON.stringify(body)});
+  const response=await fetch(`${auth.url.replace(/\/$/,"")}${path}`,{method,headers,body:body===undefined?undefined:JSON.stringify(body),signal});
   const text=await response.text();let data=null;try{data=text?JSON.parse(text):null;}catch{}
   if(!response.ok)throw new Error(data?.msg||data?.message||data?.error_description||"Supabase request failed.");
   return data;
@@ -378,7 +462,20 @@ async function authRequest(path,body) {
   return data;
 }
 
+function invalidateWorkspaceSync() {
+  const auth=state.auth;
+  auth.sessionEpoch++;
+  auth.syncEpoch++;
+  auth.syncJob?.controller.abort();
+  auth.syncJob=null;
+  auth.syncing=false;
+  auth.syncRequested=false;
+}
+
 function setAuthSession(session) {
+  const previousUserId=state.auth.user?.id||state.auth.session?.user?.id||null;
+  const nextUserId=session.user?.id||null;
+  if(previousUserId&&previousUserId!==nextUserId)invalidateWorkspaceSync();
   state.auth.session={...session,expires_at:session.expires_at||Math.floor(Date.now()/1000)+Number(session.expires_in||3600)};
   state.auth.user=session.user||null;
   localStorage.setItem("cmc-lens-session",JSON.stringify(state.auth.session));
@@ -409,6 +506,9 @@ function chooseGuestImport(count,email) {
 
 async function activateAccountWorkspace(user) {
   if(!user?.id) throw new Error("The signed-in account could not be identified.");
+  const previousUserId=state.auth.user?.id||state.auth.session?.user?.id||null;
+  if(previousUserId&&previousUserId!==user.id)invalidateWorkspaceSync();
+  const activationEpoch=state.auth.sessionEpoch;
   state.auth.user=user;
   const accountKey=`cmc-lens-theses:${user.id}`;
   const setupKey=`cmc-lens-workspace-ready:${user.id}`;
@@ -418,15 +518,19 @@ async function activateAccountWorkspace(user) {
   let importedGuest=false;
   if(!localStorage.getItem(setupKey)){
     if(!accountExists&&guest.length){
-      if(await chooseGuestImport(guest.length,user.email)){
+      const importGuest=await chooseGuestImport(guest.length,user.email);
+      if(state.auth.sessionEpoch!==activationEpoch||state.auth.user?.id!==user.id)return;
+      if(importGuest){
         importedGuest=true;
         const byId=new Map(account.map(t=>[t.id,t]));
         for(const t of guest)if(!byId.has(t.id))byId.set(t.id,t);
         account=[...byId.values()];
       }
     }
+    if(state.auth.sessionEpoch!==activationEpoch||state.auth.user?.id!==user.id)return;
     localStorage.setItem(setupKey,"1");
   }
+  if(state.auth.sessionEpoch!==activationEpoch||state.auth.user?.id!==user.id)return;
   state.theses=account;
   localStorage.setItem(accountKey,JSON.stringify(account));
   if(importedGuest)localStorage.removeItem("cmc-lens-theses");
@@ -443,8 +547,9 @@ async function bootstrapAuth() {
     if(saved){try{state.auth.session=JSON.parse(saved);}catch{localStorage.removeItem("cmc-lens-session");}}
     await handleAuthCallback();
     if(state.auth.session?.access_token){
-      try{const user=await sbRequest("/auth/v1/user");await activateAccountWorkspace(user);}
-      catch{await refreshAuthSession();if(state.auth.user)await activateAccountWorkspace(state.auth.user);}
+      const epoch=state.auth.sessionEpoch,token=state.auth.session.access_token;
+      try{const user=await sbRequest("/auth/v1/user",{token});if(state.auth.sessionEpoch===epoch&&state.auth.session?.access_token===token)await activateAccountWorkspace(user);}
+      catch{if(state.auth.sessionEpoch===epoch&&state.auth.session?.access_token===token){await refreshAuthSession();if(state.auth.user)await activateAccountWorkspace(state.auth.user);}}
     }
     updateStorageStatus();
     if(state.auth.user)await syncWorkspace();
@@ -453,8 +558,15 @@ async function bootstrapAuth() {
 
 async function refreshAuthSession(){
   const refresh=state.auth.session?.refresh_token;if(!refresh)return;
-  try{const session=await authRequest("token?grant_type=refresh_token",{refresh_token:refresh});setAuthSession(session);}
-  catch{state.auth.session=null;state.auth.user=null;localStorage.removeItem("cmc-lens-session");state.theses=loadTheses();renderThesisCards();updateStorageStatus("Signed out · guest records remain in this browser.");}
+  const epoch=state.auth.sessionEpoch;
+  try{
+    const session=await authRequest("token?grant_type=refresh_token",{refresh_token:refresh});
+    if(state.auth.sessionEpoch!==epoch||state.auth.session?.refresh_token!==refresh)return;
+    setAuthSession(session);
+  }catch{
+    if(state.auth.sessionEpoch!==epoch||state.auth.session?.refresh_token!==refresh)return;
+    invalidateWorkspaceSync();state.auth.session=null;state.auth.user=null;localStorage.removeItem("cmc-lens-session");state.theses=loadTheses();renderThesisCards();updateStorageStatus("Signed out · guest records remain in this browser.");
+  }
 }
 
 async function handleAuthCallback(){
@@ -482,42 +594,54 @@ function authForm(step="email"){
       }else{
         const code=new FormData(e.currentTarget).get("code").trim();
         const session=await authRequest("verify",{email:state.auth.pendingEmail,token:code,type:"email"});
-        setAuthSession(session);state.auth.pendingEmail=null;closeModal();const user=session.user||await sbRequest("/auth/v1/user");await activateAccountWorkspace(user);await syncWorkspace();updateStorageStatus();toast("Workspace connected. Your account records are syncing.");
+        setAuthSession(session);const epoch=state.auth.sessionEpoch,token=state.auth.session?.access_token;state.auth.pendingEmail=null;closeModal();if(!token)throw new Error("The sign-in session did not include an access token.");const user=await sbRequest("/auth/v1/user",{token});if(state.auth.sessionEpoch!==epoch||state.auth.session?.access_token!==token)return;await activateAccountWorkspace(user);if(state.auth.sessionEpoch!==epoch||state.auth.session?.access_token!==token)return;await syncWorkspace();if(state.auth.sessionEpoch!==epoch||state.auth.session?.access_token!==token)return;updateStorageStatus();toast("Workspace connected. Your account records are syncing.");
       }
     }catch(error){toast(error.message||"Sign-in could not be completed.",true);submit.disabled=false;}
   });
 }
 
 async function syncWorkspace(){
-  if(!state.auth.user||!state.auth.session)return;
-  if(state.auth.syncing){state.auth.syncRequested=true;return;}
-  state.auth.syncing=true;
-  const owner=state.auth.user.id;
+  const auth=state.auth;
+  if(!auth.user?.id||!auth.session?.access_token)return;
+  if(auth.syncJob){auth.syncRequested=true;return;}
+  const owner=auth.user.id,token=auth.session.access_token,epoch=auth.syncEpoch;
+  const job={owner,epoch,controller:new AbortController()};
+  auth.syncJob=job;auth.syncing=true;
+  const theses=[...state.theses];
+  const assertCurrent=()=>{if(auth.syncJob!==job||auth.syncEpoch!==epoch||auth.user?.id!==owner||job.controller.signal.aborted)throw new DOMException("Workspace sync was superseded.","AbortError");};
+  const request=(path,options={})=>{assertCurrent();return sbRequest(path,{...options,token,signal:job.controller.signal});};
   const insertOnly="resolution=ignore-duplicates,return=minimal";
   try{
-    for(const t of state.theses){
+    for(const t of theses){
       t.baselineSnapshotId ||= crypto.randomUUID();
       const thesis={id:t.id,owner_id:owner,title:t.title,question:"",thesis_text:t.view||"",status:t.status==="reviewed"?"reviewed":"open",horizon_start:t.createdAt,review_at:t.reviewAt||null,primary_asset_id:t.assetId||null,primary_asset_symbol:t.assetSymbol||null,privacy:"private",created_at:t.createdAt,updated_at:t.createdAt};
-      await sbRequest("/rest/v1/theses?on_conflict=id",{method:"POST",body:thesis,prefer:"resolution=merge-duplicates,return=minimal"});
+      await request("/rest/v1/theses?on_conflict=id",{method:"POST",body:thesis,prefer:"resolution=merge-duplicates,return=minimal"});
       const source=t.evidence?.[0]?.source||"Demo dataset";
-      const snapshot={id:t.baselineSnapshotId,owner_id:owner,thesis_id:t.id,snapshot_kind:"baseline",source_provider:source==="CoinMarketCap"?"coinmarketcap":"demo",source_endpoint:source==="CoinMarketCap"?"/v3/cryptocurrency/quotes/latest":null,source_observed_at:t.baselineSnapshot?.sourceObservedAt||t.createdAt,captured_at:t.baselineSnapshot?.capturedAt||t.createdAt,source_payload:{evidence:t.evidence||[],baseline:t.baselineSnapshot||null},derived_metrics:{assetSymbol:t.assetSymbol||null,peerContext:t.evidence?.find(x=>x.label==="Research context")?.value||null},coverage:source==="CoinMarketCap"?"complete":"partial",limitations:source==="CoinMarketCap"?"User-authored interpretation; source data is a compacted application snapshot.":"Illustrative demo values, not live market evidence."};
-      await sbRequest("/rest/v1/thesis_snapshots?on_conflict=id",{method:"POST",body:snapshot,prefer:insertOnly});
-      await sbRequest(`/rest/v1/theses?id=eq.${encodeURIComponent(t.id)}`,{method:"PATCH",body:{baseline_snapshot_id:t.baselineSnapshotId},prefer:"return=minimal"});
-      const evidence=(t.evidence||[]).map(item=>{item.id ||= crypto.randomUUID();return {id:item.id,owner_id:owner,thesis_id:t.id,snapshot_id:t.baselineSnapshotId,kind:item.kind||"metric",label:item.label,detail:item.detail||"",source_url:item.sourceUrl||null,source_timestamp:item.sourceTimestamp||t.createdAt,value_text:item.value||null,unit:item.unit||null,direction:item.direction||"neutral"};});
-      if(evidence.length)await sbRequest("/rest/v1/evidence_items?on_conflict=id",{method:"POST",body:evidence,prefer:insertOnly});
-      if(t.condition){t.conditionId ||= crypto.randomUUID();await sbRequest("/rest/v1/thesis_conditions?on_conflict=id",{method:"POST",body:{id:t.conditionId,owner_id:owner,thesis_id:t.id,condition_type:"qualitative",metric_key:"user_defined",effect:"weaken",description:t.condition,active:true},prefer:"resolution=merge-duplicates,return=minimal"});}
-      for(const review of t.reviews||[]){review.id ||= crypto.randomUUID();review.snapshotId ||= crypto.randomUUID();await sbRequest("/rest/v1/thesis_snapshots?on_conflict=id",{method:"POST",body:{id:review.snapshotId,owner_id:owner,thesis_id:t.id,snapshot_kind:"manual_review",source_provider:source==="CoinMarketCap"?"coinmarketcap":"demo",source_observed_at:review.snapshot?.sourceObservedAt||review.date,captured_at:review.snapshot?.capturedAt||review.date,source_payload:{assetSymbol:t.assetSymbol||null,review:review.snapshot||null},derived_metrics:review.snapshot?.derivedMetrics||{},coverage:review.snapshot?.coverage||"unavailable",limitations:review.snapshot?.limitations||"No fresh source snapshot was captured at review time."},prefer:insertOnly});await sbRequest("/rest/v1/thesis_reviews?on_conflict=id",{method:"POST",body:{id:review.id,owner_id:owner,thesis_id:t.id,snapshot_id:review.snapshotId,reviewed_at:review.date,result_label:review.result,summary:review.note||""},prefer:insertOnly});}
+      const snapshot={id:t.baselineSnapshotId,owner_id:owner,thesis_id:t.id,snapshot_kind:"baseline",source_provider:t.baselineSnapshot?.sourceProvider||(source==="CoinMarketCap"?"coinmarketcap":"demo"),source_endpoint:t.baselineSnapshot?.sourceEndpoint??(source==="CoinMarketCap"?"/v3/cryptocurrency/quotes/latest":null),source_observed_at:t.baselineSnapshot?.sourceObservedAt??null,captured_at:t.baselineSnapshot?.capturedAt||t.createdAt,source_payload:{evidence:t.evidence||[],baseline:t.baselineSnapshot||null},derived_metrics:{assetSymbol:t.assetSymbol||null,peerContext:t.evidence?.find(x=>x.label==="Research context")?.value||null},coverage:source==="CoinMarketCap"?"complete":"partial",limitations:source==="CoinMarketCap"?"User-authored interpretation; source data is a compacted application snapshot.":"Illustrative demo values, not live market evidence."};
+      await request("/rest/v1/thesis_snapshots?on_conflict=id",{method:"POST",body:snapshot,prefer:insertOnly});
+      await request(`/rest/v1/theses?id=eq.${encodeURIComponent(t.id)}`,{method:"PATCH",body:{baseline_snapshot_id:t.baselineSnapshotId},prefer:"return=minimal"});
+      const evidence=(t.evidence||[]).map(item=>{item.id ||= crypto.randomUUID();return {id:item.id,owner_id:owner,thesis_id:t.id,snapshot_id:t.baselineSnapshotId,kind:item.kind||"metric",label:item.label,detail:item.detail||"",source_url:item.sourceUrl||null,source_timestamp:item.sourceTimestamp??null,value_text:item.value||null,unit:item.unit||null,direction:item.direction||"neutral"};});
+      if(evidence.length)await request("/rest/v1/evidence_items?on_conflict=id",{method:"POST",body:evidence,prefer:insertOnly});
+      if(t.condition){t.conditionId ||= crypto.randomUUID();await request("/rest/v1/thesis_conditions?on_conflict=id",{method:"POST",body:{id:t.conditionId,owner_id:owner,thesis_id:t.id,condition_type:"qualitative",metric_key:"user_defined",effect:"weaken",description:t.condition,active:true},prefer:"resolution=merge-duplicates,return=minimal"});}
+      for(const review of t.reviews||[]){review.id ||= crypto.randomUUID();review.snapshotId ||= crypto.randomUUID();await request("/rest/v1/thesis_snapshots?on_conflict=id",{method:"POST",body:{id:review.snapshotId,owner_id:owner,thesis_id:t.id,snapshot_kind:"manual_review",source_provider:review.snapshot?.sourceProvider||"unavailable",source_endpoint:review.snapshot?.sourceEndpoint||null,source_observed_at:review.snapshot?.sourceObservedAt??null,captured_at:review.snapshot?.capturedAt||review.date,source_payload:{assetSymbol:t.assetSymbol||null,retrievedAt:review.snapshot?.retrievedAt??null,review:review.snapshot||null},derived_metrics:review.snapshot?.derivedMetrics||{},coverage:review.snapshot?.coverage||"unavailable",limitations:review.snapshot?.limitations||"No fresh source snapshot was captured at review time."},prefer:insertOnly});await request("/rest/v1/thesis_reviews?on_conflict=id",{method:"POST",body:{id:review.id,owner_id:owner,thesis_id:t.id,snapshot_id:review.snapshotId,reviewed_at:review.date,result_label:review.result,summary:review.note||""},prefer:insertOnly});}
     }
-    {const remote=await sbRequest(`/rest/v1/theses?select=*&owner_id=eq.${encodeURIComponent(owner)}&order=created_at.desc`);const missing=(remote||[]).filter(row=>!state.theses.some(t=>t.id===row.id));
-      if(missing.length){const missingIds=missing.map(t=>t.id).join(",");const [evidence,reviews,snapshots,conditions]=await Promise.all([sbRequest(`/rest/v1/evidence_items?select=*&owner_id=eq.${encodeURIComponent(owner)}&thesis_id=in.(${missingIds})`),sbRequest(`/rest/v1/thesis_reviews?select=*&owner_id=eq.${encodeURIComponent(owner)}&thesis_id=in.(${missingIds})`),sbRequest(`/rest/v1/thesis_snapshots?select=*&owner_id=eq.${encodeURIComponent(owner)}&thesis_id=in.(${missingIds})&order=captured_at.asc`),sbRequest(`/rest/v1/thesis_conditions?select=*&owner_id=eq.${encodeURIComponent(owner)}&thesis_id=in.(${missingIds})&active=eq.true`)]);for(const row of missing){const thesisSnapshots=(snapshots||[]).filter(x=>x.thesis_id===row.id);const baseline=thesisSnapshots.find(x=>x.id===row.baseline_snapshot_id)||null;const rowConditions=(conditions||[]).filter(x=>x.thesis_id===row.id);state.theses.push({id:row.id,title:row.title,view:row.thesis_text,assetId:row.primary_asset_id,assetSymbol:row.primary_asset_symbol,createdAt:row.created_at,reviewAt:row.review_at,status:row.status,baselineSnapshotId:row.baseline_snapshot_id,baselineSnapshot:baseline?.source_payload?.baseline||null,condition:rowConditions[0]?.description||"",conditionId:rowConditions[0]?.id||null,evidence:(evidence||[]).filter(x=>x.thesis_id===row.id&&(!row.baseline_snapshot_id||x.snapshot_id===row.baseline_snapshot_id)).map(x=>({id:x.id,label:x.label,value:x.value_text||"",detail:x.detail,source:baseline?.source_provider==="coinmarketcap"?"CoinMarketCap":"Synced evidence",sourceTimestamp:x.source_timestamp,sourceUrl:x.source_url})),reviews:(reviews||[]).filter(x=>x.thesis_id===row.id).map(x=>({id:x.id,date:x.reviewed_at,result:x.result_label,note:x.summary,snapshotId:x.snapshot_id,snapshot:thesisSnapshots.find(s=>s.id===x.snapshot_id)?.source_payload?.review||null}))});}}
+    {const remote=await request(`/rest/v1/theses?select=*&owner_id=eq.${encodeURIComponent(owner)}&order=created_at.desc`);const missing=(remote||[]).filter(row=>!theses.some(t=>t.id===row.id));
+      if(missing.length){const missingIds=missing.map(t=>t.id).join(",");const [evidence,reviews,snapshots,conditions]=await Promise.all([request(`/rest/v1/evidence_items?select=*&owner_id=eq.${encodeURIComponent(owner)}&thesis_id=in.(${missingIds})`),request(`/rest/v1/thesis_reviews?select=*&owner_id=eq.${encodeURIComponent(owner)}&thesis_id=in.(${missingIds})`),request(`/rest/v1/thesis_snapshots?select=*&owner_id=eq.${encodeURIComponent(owner)}&thesis_id=in.(${missingIds})&order=captured_at.asc`),request(`/rest/v1/thesis_conditions?select=*&owner_id=eq.${encodeURIComponent(owner)}&thesis_id=in.(${missingIds})&active=eq.true`)]);for(const row of missing){const thesisSnapshots=(snapshots||[]).filter(x=>x.thesis_id===row.id);const baseline=thesisSnapshots.find(x=>x.id===row.baseline_snapshot_id)||null;const rowConditions=(conditions||[]).filter(x=>x.thesis_id===row.id);theses.push({id:row.id,title:row.title,view:row.thesis_text,assetId:row.primary_asset_id,assetSymbol:row.primary_asset_symbol,createdAt:row.created_at,reviewAt:row.review_at,status:row.status,baselineSnapshotId:row.baseline_snapshot_id,baselineSnapshot:baseline?.source_payload?.baseline||null,condition:rowConditions[0]?.description||"",conditionId:rowConditions[0]?.id||null,evidence:(evidence||[]).filter(x=>x.thesis_id===row.id&&(!row.baseline_snapshot_id||x.snapshot_id===row.baseline_snapshot_id)).map(x=>({id:x.id,label:x.label,value:x.value_text||"",detail:x.detail,source:baseline?.source_provider==="coinmarketcap"?"CoinMarketCap":"Synced evidence",sourceTimestamp:x.source_timestamp,sourceUrl:x.source_url})),reviews:(reviews||[]).filter(x=>x.thesis_id===row.id).map(x=>({id:x.id,date:x.reviewed_at,result:x.result_label,note:x.summary,snapshotId:x.snapshot_id,snapshot:thesisSnapshots.find(s=>s.id===x.snapshot_id)?.source_payload?.review||null}))});}}
     }
-    localStorage.setItem(activeThesesKey(),JSON.stringify(state.theses));renderThesisCards();updateStorageStatus("Synced to your private Supabase workspace.");
-  }finally{state.auth.syncing=false;if(state.auth.syncRequested){state.auth.syncRequested=false;syncWorkspace().catch(()=>updateStorageStatus("Saved locally · cloud sync will retry"));}}
+    assertCurrent();
+    const latestById=new Map(theses.map(t=>[t.id,t]));for(const current of state.theses)latestById.set(current.id,current);const finalTheses=[...latestById.values()];
+    localStorage.setItem("cmc-lens-theses:"+owner,JSON.stringify(finalTheses));
+    state.theses=finalTheses;renderThesisCards();updateStorageStatus("Synced to your private Supabase workspace.");
+  }finally{
+    if(auth.syncJob===job){auth.syncJob=null;auth.syncing=false;if(auth.syncRequested){auth.syncRequested=false;syncWorkspace().catch(()=>updateStorageStatus("Saved locally · cloud sync will retry"));}}
+  }
 }
 
 async function signOutWorkspace(){
-  try{await sbRequest("/auth/v1/logout",{method:"POST"});}catch{}
+  const token=state.auth.session?.access_token;
+  invalidateWorkspaceSync();
   state.auth.session=null;state.auth.user=null;localStorage.removeItem("cmc-lens-session");state.theses=loadTheses();renderThesisCards();updateStorageStatus("Signed out · guest records remain in this browser.");
+  try{if(token)await sbRequest("/auth/v1/logout",{method:"POST",token});}catch{}
 }
 
 function setup() {
@@ -526,7 +650,8 @@ function setup() {
   document.getElementById("theme-toggle").addEventListener("click",()=>setTheme(document.documentElement.dataset.theme==="dark"?"light":"dark"));
   document.querySelectorAll("[data-set-theme]").forEach(el=>el.addEventListener("click",()=>setTheme(el.dataset.setTheme)));
   document.querySelectorAll("[data-thesis-filter]").forEach(el=>el.addEventListener("click",()=>{state.activeFilter=el.dataset.thesisFilter;document.querySelectorAll("[data-thesis-filter]").forEach(x=>x.classList.toggle("selected",x===el));renderThesesPage();}));
-  ["new-thesis","new-thesis-alt","explore-new-thesis","theses-new","compare-save-thesis"].forEach(id=>document.getElementById(id).addEventListener("click",thesisForm));
+  ["new-thesis","new-thesis-alt","explore-new-thesis","theses-new"].forEach(id=>document.getElementById(id).addEventListener("click",()=>thesisForm()));
+  document.getElementById("compare-save-thesis").addEventListener("click",comparisonThesisForm);
   document.getElementById("refresh-data").addEventListener("click",refreshData);
   document.getElementById("auth-action").addEventListener("click",()=>state.auth.user?signOutWorkspace():authForm());
   document.getElementById("demo-banner-close").addEventListener("click",()=>document.getElementById("demo-banner").hidden=true);
@@ -551,7 +676,7 @@ function setup() {
 }
 
 async function searchRemote(q,target="explore"){
-  try{const r=await fetch(`/api/market?view=search&q=${encodeURIComponent(q)}`,{headers:{Accept:"application/json"}});if(!r.ok)return;const body=await r.json();if(body.mode!=="live"||!Array.isArray(body.assets))return;const existing=new Set(state.data.assets.map(a=>a.symbol));state.data.assets=[...state.data.assets,...body.assets.filter(a=>!existing.has(a.symbol))];if(target==="compare")renderComparePickerResults();else renderExplore(document.getElementById("asset-search").value);}
+  try{const r=await fetch(`/api/market?view=search&q=${encodeURIComponent(q)}`,{headers:{Accept:"application/json"}});if(!r.ok)return;const body=await r.json();if(body.mode!=="live"||!Array.isArray(body.assets))return;const existing=new Set(state.data.assets.map(a=>String(a.id)));state.data.assets=[...state.data.assets,...body.assets.filter(a=>!existing.has(String(a.id)))];if(target==="compare")renderComparePickerResults();else renderExplore(document.getElementById("asset-search").value);}
   catch{ /* Keep the already-rendered search results usable if the API is unavailable. */ }
 }
 
