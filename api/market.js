@@ -242,7 +242,7 @@ module.exports = async function handler(req, res) {
     }
     if (view === "search") {
       const q = String(req.query.q || "").trim();
-      if (!/^[a-zA-Z0-9-]{2,20}$/.test(q)) return reply(res, 400, { error: "INVALID_QUERY" });
+      if (!/^[a-zA-Z0-9][a-zA-Z0-9 .-]{1,39}$/.test(q)) return reply(res, 400, { error: "INVALID_QUERY" });
       const assets = await liveSearch(q);
       return reply(res, 200, { mode: "live", retrievedAt: new Date().toISOString(), assets });
     }
