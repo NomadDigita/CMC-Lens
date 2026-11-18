@@ -25,6 +25,7 @@
           <button class="nav-item active" data-view="pulse"><span class="nav-icon pulse-icon">◈</span><span>Market pulse</span><kbd>⌘ 1</kbd></button>
           <button class="nav-item" data-view="explore"><span class="nav-icon">⌕</span><span>Explore assets</span><kbd>⌘ 2</kbd></button>
           <button class="nav-item" data-view="compare"><span class="nav-icon">◫</span><span>Compare</span><kbd>⌘ 3</kbd></button>
+          <button class="nav-item" data-view="atlas"><span class="nav-icon">◎</span><span>Market Atlas</span><kbd>⌘ 4</kbd></button>
           <button class="nav-item" data-view="theses"><span class="nav-icon">▤</span><span>Thesis log</span><span class="nav-count" id="thesis-count">0</span></button>
         </nav>
 
@@ -94,6 +95,40 @@
         </section>
 
         <section class="page-view simple-view" id="view-explore"><div class="page-heading"><div><div class="eyebrow"><span class="eyebrow-line"></span>ASSET RESEARCH</div><h1>Look closer.</h1><p class="heading-subtitle">Start with an asset. Keep the surrounding evidence in view.</p></div><button class="primary-button" id="explore-new-thesis">＋ Start a thesis</button></div><div class="explore-search"><span>⌕</span><input id="asset-search" placeholder="Search a name, symbol, or CMC ID" autocomplete="off"/><kbd>↵</kbd></div><div class="asset-results" id="asset-results"></div><div class="empty-hint">Search results use the CMC asset map when live API access is connected. Demo mode uses a small sample set.</div></section>
+
+        <section class="page-view simple-view" id="view-atlas">
+          <div class="page-heading atlas-page-heading">
+            <div><div class="eyebrow"><span class="eyebrow-line"></span>CMC MARKET ATLAS <span class="eyebrow-dot">·</span> ROTATION FIELD</div><h1>Find the shape of a move.</h1><p class="heading-subtitle">Explore where returns are broadening or separating across CMC’s covered asset set.</p></div>
+            <button class="quiet-button" id="atlas-inspect-source">ƒ Inspect source</button>
+          </div>
+          <div class="atlas-universe-strip">
+            <div><span class="atlas-kicker">UNIVERSE</span><strong id="atlas-universe-scope">Top 100 by market cap</strong><small id="atlas-asof">Waiting for market data</small></div>
+            <div><span class="atlas-kicker">COVERED MOVES</span><strong id="atlas-coverage">—</strong><small id="atlas-coverage-note">Observed 24h returns / queried assets</small></div>
+            <div><span class="atlas-kicker">PEER MODEL</span><strong>Equal-weight category mean</strong><small>Relative return = asset move − covered category peers</small></div>
+          </div>
+          <div class="atlas-toolbar">
+            <label class="atlas-control"><span>Category</span><select id="atlas-category-filter"><option value="all">All categories</option></select></label>
+            <label class="atlas-control"><span>Market cap</span><select id="atlas-cap-filter"><option value="all">Any size</option><option value="under-100m">Under $100M</option><option value="100m-1b">$100M–$1B</option><option value="over-1b">$1B and above</option></select></label>
+            <label class="atlas-check"><input type="checkbox" id="atlas-hide-stablecoins" checked/><span>Hide stablecoins</span></label>
+            <div class="atlas-view-switch" role="group" aria-label="Atlas display"><button id="atlas-view-map" class="selected" aria-pressed="true">Rotation map</button><button id="atlas-view-list" aria-pressed="false">Accessible list</button></div>
+          </div>
+          <div class="atlas-workspace">
+            <section class="atlas-visual-panel" aria-label="Market asset rotation map">
+              <div class="atlas-panel-head"><div><span class="atlas-kicker">ASSET VS. CATEGORY PEERS</span><strong id="atlas-result-count">Loading assets</strong></div><span class="atlas-plot-note">Axes capped at ±20% · full values in detail</span></div>
+              <div id="atlas-map-wrap" class="atlas-map-wrap"><div id="atlas-map" class="atlas-map"></div></div>
+              <div class="atlas-legend"><span><i class="atlas-legend-under"></i>Lagging peers</span><span><i class="atlas-legend-neutral"></i>Near peer mean</span><span><i class="atlas-legend-over"></i>Outperforming peers</span><span class="atlas-size-key">Bubble size follows log market cap</span></div>
+              <div id="atlas-list-wrap" class="atlas-list-wrap" hidden><div id="atlas-list" class="atlas-list" role="list"></div></div>
+              <div class="atlas-method"><span>ƒ</span><p>Each asset is assigned one deterministic primary CMC tag category to avoid double-counting. Relative moves use covered peers only; assets without a peer sample remain unclassified on the vertical axis. The top-100 list is a market-cap sample, not the whole market.</p></div>
+            </section>
+            <aside class="atlas-side-panel">
+              <div class="atlas-selection-head"><span class="atlas-kicker">RESEARCH COHORT</span><strong id="atlas-selection-count">0 / 8 selected</strong></div>
+              <div id="atlas-selection-summary" class="atlas-selection-summary"><div class="empty-hint">Choose a bubble or asset to inspect it, then add a small cohort for direct comparison.</div></div>
+              <div class="atlas-selection-actions"><button id="atlas-compare-selection" class="primary-button" disabled>Compare selected</button><button id="atlas-thesis-selection" class="secondary-button" disabled>Start a thesis</button><button id="atlas-clear-selection" class="text-button" disabled>Clear selection</button></div>
+              <div class="atlas-side-note"><strong>Use this view for discovery.</strong><span>It does not explain why an asset moved or predict what happens next. Check the source receipt and asset dossier before interpreting a cluster.</span></div>
+            </aside>
+          </div>
+          <footer class="app-footer"><span>Descriptive market context · missing observations stay missing</span><span class="footer-attribution">Data provided by <a href="https://coinmarketcap.com/" target="_blank" rel="noreferrer">CoinMarketCap.com</a> <span id="atlas-data-state">· demo values</span></span></footer>
+        </section>
 
         <section class="page-view simple-view" id="view-compare"><div class="page-heading"><div><div class="eyebrow"><span class="eyebrow-line"></span>MATCHED PERIODS</div><h1>Compare in context.</h1><p class="heading-subtitle">Keep the period, quote currency, and benchmark consistent.</p></div><button class="primary-button" id="compare-save-thesis">＋ Save as thesis</button></div><div class="compare-controls"><div class="compare-assets" id="compare-assets"></div><div class="period-switch" role="group" aria-label="Comparison period"><button class="selected" data-period="7D">7D</button><button data-period="30D">30D</button><button data-period="90D">90D</button></div></div><div class="compare-chart-panel"><div class="compare-chart-title"><div><span class="panel-kicker">RELATIVE PERFORMANCE</span><h2>Same window. Shared baseline.</h2></div><div id="compare-legend" class="compare-legend"></div></div><div id="compare-chart" class="compare-chart"></div><div class="compare-footnote"><span class="method-mark">ƒ</span><span id="compare-footnote">Demo line shapes are illustrative. Live mode will plot CMC historical quotes for the selected period.</span></div></div><div class="compare-table" id="compare-table"></div></section>
 

@@ -129,7 +129,8 @@ const CATEGORY_TAGS = new Map([
   ["defi", "DeFi"], ["decentralized-finance", "DeFi"],
   ["layer-2", "Layer 2"], ["layer-2s", "Layer 2"], ["layer-2-l2", "Layer 2"], ["layer-2-l2s", "Layer 2"],
   ["layer-1", "Layer 1"], ["layer-1s", "Layer 1"], ["layer-1-l1", "Layer 1"], ["layer-1-l1s", "Layer 1"],
-  ["smart-contracts", "Smart contracts"], ["smart-contract-platform", "Smart contracts"]
+  ["smart-contracts", "Smart contracts"], ["smart-contract-platform", "Smart contracts"],
+  ["stablecoin", "Stablecoins"], ["stablecoins", "Stablecoins"]
 ]);
 
 function normalizeTagSlug(value) {
@@ -138,18 +139,21 @@ function normalizeTagSlug(value) {
     .replace(/&/g, "and").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
 
+const CATEGORY_PRIORITY = ["Layer 1", "Layer 2", "Smart contracts", "DeFi", "AI & Data", "Gaming", "Meme", "Stablecoins"];
+
 function categoryFor(tags = []) {
   if (!Array.isArray(tags)) return null;
+  const recognized = new Set();
   for (const tag of tags) {
     const candidates = typeof tag === "string"
       ? [tag]
       : [tag?.slug, tag?.name, tag?.category].filter(Boolean);
     for (const candidate of candidates) {
       const category = CATEGORY_TAGS.get(normalizeTagSlug(candidate));
-      if (category) return category;
+      if (category) recognized.add(category);
     }
   }
-  return null;
+  return CATEGORY_PRIORITY.find(category => recognized.has(category)) || [...recognized].sort()[0] || null;
 }
 
 function finiteMetric(value) {
@@ -225,24 +229,27 @@ async function optionalFearGreed(receiptSink=[]) {
 
 function normalizeOverview(globalData, listings, sentiment = null) {
   const quote = globalData?.quote?.USD || {};
-  const assets = (listings || []).map(item => {
-    const usd = quoteFor(item);
-    return {
-      id: String(item.id), name: item.name, symbol: item.symbol,
-      price: finiteMetric(usd.price), change24h: finiteMetric(usd.percent_change_24h),
-      marketCap: finiteMetric(usd.market_cap), volume24h: finiteMetric(usd.volume_24h),
-      observedAt: usd.last_updated || item.last_updated || null,
-      color: "#8ca2ec", peers: "No peer data", peerDelta: null, tags: item.tags || []
-    };
-  });
+  const assets = (listings || []).map(item => ({
+    id: String(item.id), name: item.name, symbol: item.symbol,
+    price: finiteMetric(quoteFor(item).price),
+    change24h: finiteMetric(quoteFor(item).percent_change_24h),
+    marketCap: finiteMetric(quoteFor(item).market_cap),
+    volume24h: finiteMetric(quoteFor(item).volume_24h),
+    observedAt: quoteFor(item).last_updated || item.last_updated || null,
+    color: "#8ca2ec", peers: "No peer data", peerDelta: null, tags: item.tags || [],
+    category: categoryFor(item.tags || []),
+    peerMeanChange24h: null, relativeChange24h: null, marketMeanChange24h: null,
+    categoryPeerCount: 0, categoryPeerUniverse: 0
+  }));
   const covered = assets.filter(item => item.change24h !== null);
   const rising = covered.filter(item => item.change24h > 0).length;
   const declining = covered.filter(item => item.change24h < 0).length;
   const flat = covered.filter(item => item.change24h === 0).length;
   const missing = assets.length - covered.length;
   const categories = new Map();
+
   for (const item of assets) {
-    const label = categoryFor(item.tags);
+    const label = item.category;
     if (!label) continue;
     const row = categories.get(label) || { name: label, advancing: 0, total: 0, universe: 0 };
     row.universe += 1;
@@ -252,20 +259,25 @@ function normalizeOverview(globalData, listings, sentiment = null) {
     }
     categories.set(label, row);
   }
+
   for (const item of assets) {
     if (item.change24h === null) continue;
-    const label = categoryFor(item.tags);
-    const categoryPeers = label
-      ? covered.filter(candidate => candidate.id !== item.id && categoryFor(candidate.tags) === label)
-      : [];
-    const cohort = categoryPeers.length
-      ? categoryPeers
-      : covered.filter(candidate => candidate.id !== item.id);
-    if (!cohort.length) continue;
-    const average = cohort.reduce((sum, candidate) => sum + candidate.change24h, 0) / cohort.length;
-    item.peers = `${categoryPeers.length ? label + " mean" : "Market mean"} ${formatPercent(average)}`;
-    item.peerDelta = Math.max(0, Math.min(100, Math.round(50 + (item.change24h - average) * 4)));
+    const categoryUniverse = item.category ? assets.filter(candidate => candidate.category === item.category && candidate.id !== item.id) : [];
+    const categoryPeers = covered.filter(candidate => candidate.id !== item.id && candidate.category === item.category);
+    const marketPeers = covered.filter(candidate => candidate.id !== item.id);
+    item.categoryPeerUniverse = categoryUniverse.length;
+    item.categoryPeerCount = categoryPeers.length;
+    if (categoryPeers.length) {
+      item.peerMeanChange24h = categoryPeers.reduce((sum, candidate) => sum + candidate.change24h, 0) / categoryPeers.length;
+      item.relativeChange24h = item.change24h - item.peerMeanChange24h;
+    }
+    if (marketPeers.length) item.marketMeanChange24h = marketPeers.reduce((sum, candidate) => sum + candidate.change24h, 0) / marketPeers.length;
+    const comparisonMean = categoryPeers.length ? item.peerMeanChange24h : item.marketMeanChange24h;
+    if (comparisonMean === null) continue;
+    item.peers = `${categoryPeers.length ? item.category + " mean" : "Market mean"} ${formatPercent(comparisonMean)}`;
+    item.peerDelta = Math.max(0, Math.min(100, Math.round(50 + (item.change24h - comparisonMean) * 4)));
   }
+
   const normalizedCategories = [...categories.values()]
     .filter(row => row.total >= 3)
     .map(row => ({
@@ -278,9 +290,19 @@ function normalizeOverview(globalData, listings, sentiment = null) {
     }))
     .sort((a, b) => b.advancing - a.advancing).slice(0, 5);
   const totalMarketCap = finiteMetric(quote.total_market_cap);
+  const retrievedAt = new Date().toISOString();
   return {
     mode: "live",
-    retrievedAt: new Date().toISOString(),
+    retrievedAt,
+    universe: {
+      provider: "CoinMarketCap",
+      scope: "top-100-by-market-cap",
+      queriedCount: assets.length,
+      coveredCount: covered.length,
+      missingCount: missing,
+      retrievedAt,
+      sourceObservedAt: globalData?.last_updated || null
+    },
     global: {
       marketCap: totalMarketCap,
       marketCapChange24h: finiteMetric(quote.total_market_cap_yesterday_percentage_change),

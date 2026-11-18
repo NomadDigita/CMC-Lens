@@ -63,6 +63,7 @@ The defensible product wedge is the combination of:
 - A persistent thesis history: new evidence is appended, while the original record remains intact.
 - A retrospective review: later observations are compared with the original conditions to reduce hindsight bias.
 - Matched-window replay: the same saved CMC IDs are queried from the original comparison timestamp through the review timestamp, then displayed as indexed daily quote paths with visible missing intervals.
+- Market Atlas: explore the top-100 CMC market-cap sample by primary category, absolute move, and relative return versus covered category peers, with the exact sample coverage made explicit.
 - Beginner-readable interpretation: short explanations and caveats accompany market data without pretending to predict prices.
 
 The product will not compete on the number of indicators, an opaque “AI score,” portfolio tracking, or automatic buy/sell recommendations.
@@ -75,6 +76,7 @@ The product will not compete on the number of indicators, an opaque “AI score,
    - Broad market context from available CMC global metrics.
    - Market breadth and category/peer movement where the account's API plan permits.
    - A ranked “investigate” queue based on explicit, explainable rules.
+   - Market Atlas for category-relative rotation across the top-100 market-cap sample, with size filters, stablecoin controls, source inspection, and an accessible list view.
    - Each observation links to the input metrics and a plain-language method note.
 
 2. **Asset dossier**
