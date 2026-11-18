@@ -31,16 +31,13 @@ async function cmc(path, params) {
     headers: { "X-CMC_PRO_API_KEY": process.env.CMC_PRO_API_KEY, Accept: "application/json" },
     signal: AbortSignal.timeout(9000)
   });
-  if (!response.ok) {
+  const payload = await response.json();
+  const cmcCode = Number(payload?.status?.error_code ?? 0);
+  if (!response.ok || (Number.isFinite(cmcCode) && cmcCode !== 0)) {
     const error = new Error("CoinMarketCap request failed");
     error.status = response.status;
-    throw error;
-  }
-  const payload = await response.json();
-  if (payload?.status?.error_code) {
-    const error = new Error("CoinMarketCap returned an API error");
-    error.cmcCode = payload.status.error_code;
-    error.cmcMessage = payload.status.error_message;
+    error.cmcCode = Number.isFinite(cmcCode) && cmcCode !== 0 ? cmcCode : undefined;
+    error.cmcMessage = payload?.status?.error_message;
     throw error;
   }
   return payload.data;
