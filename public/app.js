@@ -1,7 +1,7 @@
 const demoData = {
   mode: "demo",
   retrievedAt: "2026-11-18T13:30:00.000Z",
-  global: { marketCap: 2.48e12, marketCapChange24h: 2.84, btcDominance: 54.8, btcDominanceChange24h: -0.36, breadth: 68, sentiment: 62 },
+  global: { marketCap: 2.48e12, marketCapChange24h: 2.84, btcDominance: 54.8, btcDominanceChange24h: -0.36, breadth: 75, breadthCount: 6, breadthTotal: 8, sentiment: 62 },
   categories: [
     { name: "Layer 1", advancing: 82 }, { name: "DeFi", advancing: 74 }, { name: "AI & Data", advancing: 61 }, { name: "Gaming", advancing: 53 }, { name: "Meme", advancing: 39 }
   ],
@@ -147,19 +147,27 @@ function render() {
   btc.className = `metric-change ${btcChangeAvailable ? (g.btcDominanceChange24h >= 0 ? "up" : "down") : ""}`;
   btc.innerHTML = btcChangeAvailable ? `<span>${g.btcDominanceChange24h >= 0 ? "↗" : "↘"}</span> ${fmtPercent(g.btcDominanceChange24h)}` : "24h change unavailable";
   const breadthAvailable = g.breadth !== null && g.breadth !== undefined && Number.isFinite(Number(g.breadth));
-  document.getElementById("breadth-value").textContent = breadthAvailable ? String(Math.round(g.breadth)) : "—";
+  const breadthTotal = Number(g.breadthTotal) > 0 ? Number(g.breadthTotal) : state.data.assets.length;
+  const breadthCount = Number.isFinite(Number(g.breadthCount)) ? Number(g.breadthCount) : state.data.assets.filter(a => Number(a.change24h) > 0).length;
+  document.getElementById("breadth-value").textContent = breadthAvailable ? String(breadthCount) : "—";
+  document.getElementById("breadth-total").textContent = String(breadthTotal);
+  document.getElementById("breadth-advancing").textContent = String(breadthCount);
+  document.getElementById("breadth-declining").textContent = String(Math.max(0, breadthTotal - breadthCount));
+  document.getElementById("breadth-scope").textContent = state.data.mode === "live" ? "TOP 100" : "DEMO SAMPLE";
+  const breadthInfo = document.getElementById("breadth-info");
+  breadthInfo.dataset.tip = state.data.mode === "live"
+    ? "Breadth counts assets with positive 24h change in CoinMarketCap's top 100 by market capitalization."
+    : "Breadth counts positive 24h moves across this illustrative demo asset sample. It does not describe the full crypto market.";
   const ring = document.getElementById("breadth-ring");
   const breadth = breadthAvailable ? Math.max(0,Math.min(100,g.breadth)) : 0;
   ring.style.borderRightColor = breadth > 45 ? "var(--lime)" : "var(--surface-3)";
   ring.style.borderBottomColor = breadth > 70 ? "var(--lime)" : "var(--surface-3)";
   const btcAsset = state.data.assets.find(a => a.symbol === "BTC");
-  const breadthCount = g.breadthCount ?? Math.round(Number(g.breadth) * Number(g.breadthTotal || 100) / 100);
-  const breadthTotal = g.breadthTotal ?? 0;
   const narrative = document.getElementById("breadth-narrative");
   narrative.innerHTML = !breadthAvailable ? "Market breadth is unavailable in this response." : btcAsset
     ? `Bitcoin is ${Number(btcAsset.change24h) >= 0 ? "up" : "down"} <b>${Math.abs(Number(btcAsset.change24h)).toFixed(2)}%</b>, while <b>${breadthCount} of ${breadthTotal}</b> tracked assets are advancing. Breadth adds context to the move; it does not identify its cause.`
     : `<b>${breadthCount} of ${breadthTotal}</b> tracked assets are advancing. Breadth adds context to the move; it does not identify its cause.`;
-  document.getElementById("breadth-method").textContent = breadthAvailable ? `Positive 24h change · ${breadthTotal} tracked assets by market cap` : "No usable asset coverage in this response";
+  document.getElementById("breadth-method").textContent = breadthAvailable ? `Positive 24h change · ${breadthTotal} ${state.data.mode === "live" ? "CMC assets by market cap" : "illustrative demo assets"}` : "No usable asset coverage in this response";
   document.getElementById("market-timestamp").textContent = state.data.mode === "live" && state.data.retrievedAt
     ? `Retrieved ${new Date(state.data.retrievedAt).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"})}` : "Illustrative demo snapshot";
   const sentiment = g.sentiment;
