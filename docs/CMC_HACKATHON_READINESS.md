@@ -44,6 +44,12 @@ All requests are made server-side through `api/market.js`; the API key is read f
 
 The internal route `/api/market?view=asset&id=<CMC_ID>` validates a numeric ID and returns a CMC asset only when the returned CMC ID matches the request. The API key stays on the server.
 
+## In-product source receipts
+
+The **Inspect the CMC source** panel is reachable from the dashboard's data-connection control. After live data loads, it displays the actual endpoint path, allowlisted query parameters, upstream HTTP outcome, application cache state, source-observed timestamp when supplied, CMC retrieval time, app-served time, record count, and a compact normalized response summary. The summary excludes raw responses, headers, and credentials. Demo mode says explicitly that it made no CMC request.
+
+Receipts accompany overview, asset, search, historical-series, and thesis-review API responses. They are suitable for a demo walkthrough and for capturing a redacted request/response example. A receipt proves which configured server adapter call was made; it does not prove account registration or DoraHacks submission.
+
 ## Evidence and honest limitations
 
 For a judge-ready demo, capture one comparison-backed thesis twice: first show the saved CMC IDs, quotes, and source timestamps; then show the dated replay and the exact returned quote values. Include the corresponding request and a redacted response excerpt. Never include a key or account credential.
