@@ -364,10 +364,15 @@ function matchedWindowChartMarkup(windowReplay){
   svg+='<line x1="'+left+'" y1="'+y(100).toFixed(2)+'" x2="'+(width-right)+'" y2="'+y(100).toFixed(2)+'" class="window-baseline"/>';
   for(let index=0;index<assets.length;index++){
     const asset=assets[index],color=palette[index%palette.length];
-    const d=asset.points.map((point,pointIndex)=>(pointIndex?"L":"M")+x(point.timestamp).toFixed(2)+" "+y(point.index).toFixed(2)).join(" ");
-    svg+='<path d="'+d+'" fill="none" stroke="'+color+'" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>';
+    const segments=[];let segment=[];
+    for(const point of asset.points){
+      if(segment.length&&Date.parse(point.timestamp)-Date.parse(segment[segment.length-1].timestamp)>36*60*60*1000){segments.push(segment);segment=[];}
+      segment.push(point);
+    }
+    if(segment.length)segments.push(segment);
+    svg+=segments.map(points=>'<path d="'+points.map((point,pointIndex)=>(pointIndex?"L":"M")+x(point.timestamp).toFixed(2)+" "+y(point.index).toFixed(2)).join(" ")+'" fill="none" stroke="'+color+'" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>').join("");
     const last=asset.points[asset.points.length-1];
-    svg+='<circle cx="'+x(last.timestamp).toFixed(2)+'" cy="'+y(last.index).toFixed(2)+'" r="3.5" fill="'+color+'"/>';
+    svg+=asset.points.map(point=>'<circle cx="'+x(point.timestamp).toFixed(2)+'" cy="'+y(point.index).toFixed(2)+'" r="'+(point===last?"3.5":"1.5")+'" fill="'+color+'"/>').join("");
   }
   svg+='<text x="'+left+'" y="'+(height-7)+'" class="window-axis-label">'+escapeHtml(safeDate(windowReplay.startAt))+'</text>';
   svg+='<text x="'+(width-right)+'" y="'+(height-7)+'" text-anchor="end" class="window-axis-label">'+escapeHtml(safeDate(windowReplay.endAt))+'</text></svg>';
