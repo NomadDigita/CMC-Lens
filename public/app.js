@@ -185,7 +185,7 @@ function render() {
   dateEl.textContent = new Date().toLocaleDateString("en-US", {weekday:"long", month:"long", day:"numeric"}).toUpperCase();
   renderCategoryChart(); renderMovements(); renderThesisCards();
   const sparkHost=document.getElementById("market-sparkline");
-  if(state.data.mode==="demo") sparkline(); else sparkHost.innerHTML=`<div class="category-empty">Live historical series is not connected for this metric.</div>`;
+  if(state.data.mode==="demo") sparkline(); else sparkHost.innerHTML="";
   setConnection(state.data.mode, state.data.retrievedAt);
   renderCompare(); renderExplore();
 }
