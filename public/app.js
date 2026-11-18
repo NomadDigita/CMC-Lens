@@ -644,6 +644,45 @@ function authForm(step="email"){
   });
 }
 
+function reconcileThesisHistory(localTheses,remoteTheses,evidenceRows,reviewRows,snapshotRows,conditionRows){
+  const records=new Map((localTheses||[]).map(t=>[t.id,t]));
+  const remoteById=new Map((remoteTheses||[]).map(row=>[row.id,row]));
+  const snapshotById=new Map((snapshotRows||[]).map(row=>[row.id,row]));
+  for(const row of remoteTheses||[]){
+    if(records.has(row.id))continue;
+    records.set(row.id,{id:row.id,title:row.title,view:row.thesis_text,assetId:row.primary_asset_id,assetSymbol:row.primary_asset_symbol,createdAt:row.created_at,reviewAt:row.review_at,updatedAt:row.updated_at,status:row.status,baselineSnapshotId:row.baseline_snapshot_id,baselineSnapshot:null,condition:"",conditionId:null,evidence:[],reviews:[]});
+  }
+  for(const thesis of records.values()){
+    const remote=remoteById.get(thesis.id);
+    const baseline=remote?.baseline_snapshot_id?snapshotById.get(remote.baseline_snapshot_id):null;
+    thesis.baselineSnapshotId ||= remote?.baseline_snapshot_id||null;
+    if(!thesis.baselineSnapshot&&baseline?.source_payload?.baseline)thesis.baselineSnapshot=baseline.source_payload.baseline;
+    if(!thesis.updatedAt&&remote?.updated_at)thesis.updatedAt=remote.updated_at;
+    const evidence=[...(thesis.evidence||[])];
+    const evidenceIds=new Set(evidence.map(item=>item.id).filter(Boolean));
+    for(const row of evidenceRows||[]){
+      if(row.thesis_id!==thesis.id||evidenceIds.has(row.id)||(thesis.baselineSnapshotId&&row.snapshot_id!==thesis.baselineSnapshotId))continue;
+      const sourceSnapshot=snapshotById.get(row.snapshot_id);
+      evidence.push({id:row.id,label:row.label||"Evidence",value:row.value_text||"",detail:row.detail||"",source:sourceSnapshot?.source_provider==="coinmarketcap"?"CoinMarketCap":"Synced evidence",sourceTimestamp:row.source_timestamp||null,sourceUrl:row.source_url||null,kind:row.kind||"metric",unit:row.unit||null,direction:row.direction||"neutral"});
+      evidenceIds.add(row.id);
+    }
+    thesis.evidence=evidence;
+    const reviews=[...(thesis.reviews||[])];
+    const reviewIds=new Set(reviews.map(item=>item.id).filter(Boolean));
+    for(const row of reviewRows||[]){
+      if(row.thesis_id!==thesis.id||reviewIds.has(row.id))continue;
+      const snapshot=snapshotById.get(row.snapshot_id);
+      reviews.push({id:row.id,date:row.reviewed_at,result:row.result_label,note:row.summary||"",snapshotId:row.snapshot_id,snapshot:snapshot?.source_payload?.review||null});
+      reviewIds.add(row.id);
+    }
+    reviews.sort((a,b)=>new Date(a.date||0)-new Date(b.date||0));
+    thesis.reviews=reviews;
+    const latestReview=reviews.reduce((latest,review)=>!latest||new Date(review.date||0)>new Date(latest)?review.date:latest,null);
+    if(latestReview){thesis.lastReviewedAt=latestReview;if(thesis.status!=="reviewed")thesis.status="reviewed";}
+    if(!thesis.condition){const condition=(conditionRows||[]).find(row=>row.thesis_id===thesis.id&&row.active);if(condition){thesis.condition=condition.description||"";thesis.conditionId=condition.id;}}
+  }
+  return [...records.values()].sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));
+}
 async function syncWorkspace(){
   const auth=state.auth;
   if(!auth.user?.id||!auth.session?.access_token)return;
@@ -669,13 +708,28 @@ async function syncWorkspace(){
       if(t.condition){t.conditionId ||= crypto.randomUUID();await request("/rest/v1/thesis_conditions?on_conflict=id",{method:"POST",body:{id:t.conditionId,owner_id:owner,thesis_id:t.id,condition_type:"qualitative",metric_key:"user_defined",effect:"weaken",description:t.condition,active:true},prefer:"resolution=merge-duplicates,return=minimal"});}
       for(const review of t.reviews||[]){review.id ||= crypto.randomUUID();review.snapshotId ||= crypto.randomUUID();await request("/rest/v1/thesis_snapshots?on_conflict=id",{method:"POST",body:{id:review.snapshotId,owner_id:owner,thesis_id:t.id,snapshot_kind:"manual_review",source_provider:review.snapshot?.sourceProvider||"unavailable",source_endpoint:review.snapshot?.sourceEndpoint||null,source_observed_at:review.snapshot?.sourceObservedAt??null,captured_at:review.snapshot?.capturedAt||review.date,source_payload:{assetSymbol:t.assetSymbol||null,retrievedAt:review.snapshot?.retrievedAt??null,review:review.snapshot||null},derived_metrics:review.snapshot?.derivedMetrics||{},coverage:review.snapshot?.coverage||"unavailable",limitations:review.snapshot?.limitations||"No fresh source snapshot was captured at review time."},prefer:insertOnly});await request("/rest/v1/thesis_reviews?on_conflict=id",{method:"POST",body:{id:review.id,owner_id:owner,thesis_id:t.id,snapshot_id:review.snapshotId,reviewed_at:review.date,result_label:review.result,summary:review.note||""},prefer:insertOnly});}
     }
-    {const remote=await request(`/rest/v1/theses?select=*&owner_id=eq.${encodeURIComponent(owner)}&order=created_at.desc`);const missing=(remote||[]).filter(row=>!theses.some(t=>t.id===row.id));
-      if(missing.length){const missingIds=missing.map(t=>t.id).join(",");const [evidence,reviews,snapshots,conditions]=await Promise.all([request(`/rest/v1/evidence_items?select=*&owner_id=eq.${encodeURIComponent(owner)}&thesis_id=in.(${missingIds})`),request(`/rest/v1/thesis_reviews?select=*&owner_id=eq.${encodeURIComponent(owner)}&thesis_id=in.(${missingIds})`),request(`/rest/v1/thesis_snapshots?select=*&owner_id=eq.${encodeURIComponent(owner)}&thesis_id=in.(${missingIds})&order=captured_at.asc`),request(`/rest/v1/thesis_conditions?select=*&owner_id=eq.${encodeURIComponent(owner)}&thesis_id=in.(${missingIds})&active=eq.true`)]);for(const row of missing){const thesisSnapshots=(snapshots||[]).filter(x=>x.thesis_id===row.id);const baseline=thesisSnapshots.find(x=>x.id===row.baseline_snapshot_id)||null;const rowConditions=(conditions||[]).filter(x=>x.thesis_id===row.id);theses.push({id:row.id,title:row.title,view:row.thesis_text,assetId:row.primary_asset_id,assetSymbol:row.primary_asset_symbol,createdAt:row.created_at,reviewAt:row.review_at,status:row.status,baselineSnapshotId:row.baseline_snapshot_id,baselineSnapshot:baseline?.source_payload?.baseline||null,condition:rowConditions[0]?.description||"",conditionId:rowConditions[0]?.id||null,evidence:(evidence||[]).filter(x=>x.thesis_id===row.id&&(!row.baseline_snapshot_id||x.snapshot_id===row.baseline_snapshot_id)).map(x=>({id:x.id,label:x.label,value:x.value_text||"",detail:x.detail,source:baseline?.source_provider==="coinmarketcap"?"CoinMarketCap":"Synced evidence",sourceTimestamp:x.source_timestamp,sourceUrl:x.source_url})),reviews:(reviews||[]).filter(x=>x.thesis_id===row.id).map(x=>({id:x.id,date:x.reviewed_at,result:x.result_label,note:x.summary,snapshotId:x.snapshot_id,snapshot:thesisSnapshots.find(s=>s.id===x.snapshot_id)?.source_payload?.review||null}))});}}
+    const remote=await request(`/rest/v1/theses?select=*&owner_id=eq.${encodeURIComponent(owner)}&order=created_at.desc`);
+    const history={evidence:[],reviews:[],snapshots:[],conditions:[]};
+    const remoteRows=remote||[];
+    for(let offset=0;offset<remoteRows.length;offset+=50){
+      const group=remoteRows.slice(offset,offset+50);
+      const ids=group.map(row=>row.id).filter(Boolean).join(",");
+      if(!ids)continue;
+      const filter=`/rest/v1/evidence_items?select=*&owner_id=eq.${encodeURIComponent(owner)}&thesis_id=in.(${ids})`;
+      const [evidence,reviews,snapshots,conditions]=await Promise.all([
+        request(filter),
+        request(`/rest/v1/thesis_reviews?select=*&owner_id=eq.${encodeURIComponent(owner)}&thesis_id=in.(${ids})`),
+        request(`/rest/v1/thesis_snapshots?select=*&owner_id=eq.${encodeURIComponent(owner)}&thesis_id=in.(${ids})&order=captured_at.asc`),
+        request(`/rest/v1/thesis_conditions?select=*&owner_id=eq.${encodeURIComponent(owner)}&thesis_id=in.(${ids})&active=eq.true`)
+      ]);
+      history.evidence.push(...(evidence||[]));history.reviews.push(...(reviews||[]));history.snapshots.push(...(snapshots||[]));history.conditions.push(...(conditions||[]));
     }
+    const reconciled=reconcileThesisHistory(theses,remoteRows,history.evidence,history.reviews,history.snapshots,history.conditions);
+    theses.splice(0,theses.length,...reconciled);
     assertCurrent();
     const latestById=new Map(theses.map(t=>[t.id,t]));for(const current of state.theses)latestById.set(current.id,current);const finalTheses=[...latestById.values()];
     localStorage.setItem("cmc-lens-theses:"+owner,JSON.stringify(finalTheses));
-    state.theses=finalTheses;renderThesisCards();updateStorageStatus("Synced to your private Supabase workspace.");
+    state.theses=finalTheses;renderThesisCards();updateStorageStatus("Synced to Supabase · remote review history reconciled.");
   }finally{
     if(auth.syncJob===job){auth.syncJob=null;auth.syncing=false;if(auth.syncRequested){auth.syncRequested=false;syncWorkspace().catch(()=>updateStorageStatus("Saved locally · cloud sync will retry"));}}
   }
