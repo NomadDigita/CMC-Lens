@@ -299,7 +299,9 @@ function windowUnavailableMessage(status){
   if(status==="plan_unavailable")return "This CMC plan did not return historical quotes. Point-in-time quote review is still available.";
   if(status==="rate_limited")return "CMC rate-limited the historical request. No points were estimated.";
   if(status==="insufficient_assets")return "At least two valid saved CMC asset IDs are needed for a matched window.";
-  return "CMC returned no usable historical points for this saved window. No values were filled in.";
+  if(status==="demo_mode")return "This environment is using demo data, so no CMC historical request was made.";
+  if(status==="no_points")return "CMC returned no usable historical points for this saved window. No values were filled in.";
+  return "The historical request is unavailable right now. Saved point-quote replay remains available.";
 }
 
 async function captureMatchedWindowReplay(comparison,items,endAt,receiptSink,comparisonReady){
@@ -320,6 +322,7 @@ async function captureMatchedWindowReplay(comparison,items,endAt,receiptSink,com
     const status=body.error==="WINDOW_TOO_WIDE"?"window_too_wide":body.error==="CMC_ENTITLEMENT_OR_KEY"?"plan_unavailable":body.error==="CMC_RATE_LIMITED"?"rate_limited":"unavailable";
     return {status,startAt,endAt,interval:"24h",assets:[]};
   }
+  if(body.mode!=="live")return {status:"demo_mode",startAt,endAt,interval:"24h",assets:[]};
   const expectedDays=Math.max(1,Math.ceil((endMs-startMs)/(24*60*60*1000)));
   const assets=items.map(item=>{
     const base=Number(item.baselinePrice);
