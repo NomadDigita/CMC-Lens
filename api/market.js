@@ -31,13 +31,16 @@ async function cmc(path, params) {
     headers: { "X-CMC_PRO_API_KEY": process.env.CMC_PRO_API_KEY, Accept: "application/json" },
     signal: AbortSignal.timeout(9000)
   });
-  const payload = await response.json();
-  const cmcCode = Number(payload?.status?.error_code ?? 0);
-  if (!response.ok || (Number.isFinite(cmcCode) && cmcCode !== 0)) {
+  if (!response.ok) {
     const error = new Error("CoinMarketCap request failed");
     error.status = response.status;
-    error.cmcCode = Number.isFinite(cmcCode) && cmcCode !== 0 ? cmcCode : undefined;
-    error.cmcMessage = payload?.status?.error_message;
+    throw error;
+  }
+  const payload = await response.json();
+  if (payload?.status?.error_code) {
+    const error = new Error("CoinMarketCap returned an API error");
+    error.cmcCode = payload.status.error_code;
+    error.cmcMessage = payload.status.error_message;
     throw error;
   }
   return payload.data;
@@ -142,6 +145,7 @@ async function liveAsset(id) {
     id: String(item.id), name: item.name, symbol: item.symbol,
     price: usd.price, change24h: usd.percent_change_24h,
     marketCap: usd.market_cap, volume24h: usd.volume_24h,
+    observedAt: usd.last_updated || item.last_updated || null,
     peers: categoryFor(item.tags || []) || "market context", tags: item.tags || [], color: "#8ca2ec"
   };
 }
@@ -228,7 +232,7 @@ module.exports = async function handler(req, res) {
       const id = String(req.query.id || "");
       if (!/^\d{1,12}$/.test(id)) return reply(res, 400, { error: "INVALID_ASSET_ID" });
       const asset = await liveAsset(id);
-      return asset ? reply(res, 200, { mode: "live", retrievedAt: new Date().toISOString(), source: { provider: "CoinMarketCap", attribution: "Data provided by CoinMarketCap.com" }, asset }) : reply(res, 404, { error: "ASSET_NOT_FOUND" });
+      return asset ? reply(res, 200, { mode: "live", retrievedAt: new Date().toISOString(), source: { provider: "CoinMarketCap", observedAt: asset.observedAt, attribution: "Data provided by CoinMarketCap.com" }, asset }) : reply(res, 404, { error: "ASSET_NOT_FOUND" });
     }
     if (view === "history") {
       const id = String(req.query.id || "");
