@@ -662,6 +662,17 @@ function resolveThesisSyncConflict(thesis,remote){
   thesis.syncConflict={kept:"local",detectedAt:new Date().toISOString(),alternate:remoteDraft};
   return "local";
 }
+function reconcileConditionForSync(thesis,remoteCondition){
+  if(!remoteCondition)return "local";
+  const local=String(thesis.condition||""),remote=String(remoteCondition.description||"");
+  thesis.conditionId=remoteCondition.id;
+  if(local===remote)return "same";
+  const localTime=Date.parse(thesis.updatedAt||thesis.lastReviewedAt||thesis.createdAt||"")||0;
+  const remoteTime=Date.parse(remoteCondition.updated_at||remoteCondition.created_at||"")||0;
+  if(remoteTime>=localTime){thesis.syncConflict={kept:"remote",detectedAt:new Date().toISOString(),alternate:{title:thesis.title,condition:local,updatedAt:thesis.updatedAt||thesis.createdAt}};thesis.condition=remote;return "remote";}
+  thesis.syncConflict={kept:"local",detectedAt:new Date().toISOString(),alternate:{title:thesis.title,condition:remote,updatedAt:remoteCondition.updated_at||remoteCondition.created_at}};
+  return "local";
+}
 function reconcileThesisHistory(localTheses,remoteTheses,evidenceRows,reviewRows,snapshotRows,conditionRows){
   const records=new Map((localTheses||[]).map(t=>[t.id,t]));
   const remoteById=new Map((remoteTheses||[]).map(row=>[row.id,row]));
@@ -720,8 +731,14 @@ async function syncWorkspace(){
   try{
     const remoteAtStart=await fetchAllRows(`/rest/v1/theses?select=*&owner_id=eq.${encodeURIComponent(owner)}`);
     const remoteAtStartById=new Map((remoteAtStart||[]).map(row=>[row.id,row]));
+    const remoteConditionRows=[];
+    for(let offset=0;offset<remoteAtStart.length;offset+=50){const ids=remoteAtStart.slice(offset,offset+50).map(row=>row.id).filter(Boolean).join(",");if(ids)remoteConditionRows.push(...await fetchAllRows(`/rest/v1/thesis_conditions?select=*&owner_id=eq.${encodeURIComponent(owner)}&thesis_id=in.(${ids})&active=eq.true`));}
+    const conditionByThesis=new Map();
+    for(const row of remoteConditionRows){const current=conditionByThesis.get(row.thesis_id);if(!current||Date.parse(row.updated_at||row.created_at||"")>Date.parse(current.updated_at||current.created_at||""))conditionByThesis.set(row.thesis_id,row);}
     for(const t of theses){
       const syncChoice=resolveThesisSyncConflict(t,remoteAtStartById.get(t.id));
+      const remoteCondition=conditionByThesis.get(t.id);
+      const conditionChoice=reconcileConditionForSync(t,remoteCondition);
       t.baselineSnapshotId ||= crypto.randomUUID();
       const thesis={id:t.id,owner_id:owner,title:t.title,question:"",thesis_text:t.view||"",status:["reviewed","due","archived"].includes(t.status)?t.status:"open",horizon_start:t.createdAt,review_at:t.reviewAt||null,primary_asset_id:t.assetId||null,primary_asset_symbol:t.assetSymbol||null,privacy:"private",created_at:t.createdAt,updated_at:t.updatedAt||t.lastReviewedAt||t.createdAt};
       if(syncChoice!=="remote")await request("/rest/v1/theses?on_conflict=id",{method:"POST",body:thesis,prefer:"resolution=merge-duplicates,return=minimal"});
@@ -731,7 +748,7 @@ async function syncWorkspace(){
       if(!remoteAtStartById.get(t.id)?.baseline_snapshot_id)await request(`/rest/v1/theses?id=eq.${encodeURIComponent(t.id)}`,{method:"PATCH",body:{baseline_snapshot_id:t.baselineSnapshotId},prefer:"return=minimal"});
       const evidence=(t.evidence||[]).map(item=>{item.id ||= crypto.randomUUID();return {id:item.id,owner_id:owner,thesis_id:t.id,snapshot_id:t.baselineSnapshotId,kind:item.kind||"metric",label:item.label,detail:item.detail||"",source_url:item.sourceUrl||null,source_timestamp:item.sourceTimestamp??null,value_text:item.value||null,unit:item.unit||null,direction:item.direction||"neutral"};});
       if(evidence.length)await request("/rest/v1/evidence_items?on_conflict=id",{method:"POST",body:evidence,prefer:insertOnly});
-      if(t.condition&&syncChoice!=="remote"){t.conditionId ||= crypto.randomUUID();await request("/rest/v1/thesis_conditions?on_conflict=id",{method:"POST",body:{id:t.conditionId,owner_id:owner,thesis_id:t.id,condition_type:"qualitative",metric_key:"user_defined",effect:"weaken",description:t.condition,active:true},prefer:"resolution=merge-duplicates,return=minimal"});}
+      if(t.condition&&conditionChoice==="local"){const body={description:t.condition,active:true,updated_at:new Date().toISOString()};if(remoteCondition)await request(`/rest/v1/thesis_conditions?id=eq.${encodeURIComponent(remoteCondition.id)}&owner_id=eq.${encodeURIComponent(owner)}`,{method:"PATCH",body,prefer:"return=minimal"});else{t.conditionId ||= crypto.randomUUID();await request("/rest/v1/thesis_conditions?on_conflict=id",{method:"POST",body:{id:t.conditionId,owner_id:owner,thesis_id:t.id,condition_type:"qualitative",metric_key:"user_defined",effect:"weaken",...body},prefer:"resolution=merge-duplicates,return=minimal"});}}
       for(const review of t.reviews||[]){review.id ||= crypto.randomUUID();review.snapshotId ||= crypto.randomUUID();await request("/rest/v1/thesis_snapshots?on_conflict=id",{method:"POST",body:{id:review.snapshotId,owner_id:owner,thesis_id:t.id,snapshot_kind:"manual_review",source_provider:review.snapshot?.sourceProvider||"unavailable",source_endpoint:review.snapshot?.sourceEndpoint||null,source_observed_at:review.snapshot?.sourceObservedAt??null,captured_at:review.snapshot?.capturedAt||review.date,source_payload:{assetSymbol:t.assetSymbol||null,retrievedAt:review.snapshot?.retrievedAt??null,review:review.snapshot||null},derived_metrics:review.snapshot?.derivedMetrics||{},coverage:review.snapshot?.coverage||"unavailable",limitations:review.snapshot?.limitations||"No fresh source snapshot was captured at review time."},prefer:insertOnly});await request("/rest/v1/thesis_reviews?on_conflict=id",{method:"POST",body:{id:review.id,owner_id:owner,thesis_id:t.id,snapshot_id:review.snapshotId,reviewed_at:review.date,result_label:review.result,summary:review.note||""},prefer:insertOnly});}
     }
     const remote=await fetchAllRows(`/rest/v1/theses?select=*&owner_id=eq.${encodeURIComponent(owner)}&order=created_at.desc,id.desc`);
