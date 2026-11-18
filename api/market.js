@@ -263,7 +263,7 @@ function normalizeOverview(globalData, listings, sentiment = null) {
   for (const item of assets) {
     if (item.change24h === null) continue;
     const categoryUniverse = item.category ? assets.filter(candidate => candidate.category === item.category && candidate.id !== item.id) : [];
-    const categoryPeers = covered.filter(candidate => candidate.id !== item.id && candidate.category === item.category);
+    const categoryPeers = item.category ? covered.filter(candidate => candidate.id !== item.id && candidate.category === item.category) : [];
     const marketPeers = covered.filter(candidate => candidate.id !== item.id);
     item.categoryPeerUniverse = categoryUniverse.length;
     item.categoryPeerCount = categoryPeers.length;
