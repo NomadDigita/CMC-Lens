@@ -296,6 +296,7 @@ async function captureComparisonReplay(t,isLive,primaryResponse){
   const comparison=t.baselineSnapshot?.comparison;
   if(!comparison||!Array.isArray(comparison.assets)||comparison.assets.length<2)return null;
   const sourceMatches=String(comparison.sourceProvider||t.baselineSnapshot?.sourceProvider||"").toLowerCase()==="coinmarketcap";
+  const comparisonReady=!!isLive&&sourceMatches;
   const assets=comparison.assets.slice(0,8);
   const primaryId=String(t.assetId||assets[0]?.id||"");
   const benchmarkAsset=assets.find(a=>String(a.id)===primaryId)||assets[0];
@@ -304,7 +305,7 @@ async function captureComparisonReplay(t,isLive,primaryResponse){
     const id=String(baseline.id||"");
     const basePrice=hasNumericValue(baseline.price)&&Number(baseline.price)>0?Number(baseline.price):null;
     if(!/^\d{1,12}$/.test(id))return {id,symbol:baseline.symbol||"",name:baseline.name||"",baselinePrice:basePrice,currentPrice:null,priceReturnPct:null,relativeToBenchmarkPp:null,sourceObservedAt:null,retrievedAt:null,status:"invalid_id"};
-    if(!isLive||!sourceMatches)return {id,symbol:baseline.symbol||"",name:baseline.name||"",baselinePrice:basePrice,currentPrice:null,priceReturnPct:null,relativeToBenchmarkPp:null,sourceObservedAt:null,retrievedAt:null,status:"unavailable"};
+    if(!comparisonReady)return {id,symbol:baseline.symbol||"",name:baseline.name||"",baselinePrice:basePrice,currentPrice:null,priceReturnPct:null,relativeToBenchmarkPp:null,sourceObservedAt:null,retrievedAt:null,status:"unavailable"};
     let payload=null;
     try{
       if(id===String(t.assetId)&&primaryResponse)payload=primaryResponse;
@@ -319,7 +320,7 @@ async function captureComparisonReplay(t,isLive,primaryResponse){
   for(const item of items){if(item.status==="live"&&item.priceReturnPct!==null&&benchmark?.status==="live"&&benchmark.priceReturnPct!==null)item.relativeToBenchmarkPp=item.priceReturnPct-benchmark.priceReturnPct;}
   const relatives=items.filter(item=>item.id!==benchmarkId&&item.relativeToBenchmarkPp!==null).map(item=>item.relativeToBenchmarkPp);
   const availableAssets=items.filter(item=>item.status==="live").length;
-  return {sourceProvider:availableAssets?"coinmarketcap":"unavailable",sourceEndpoint:"/v3/cryptocurrency/quotes/latest",capturedAt:new Date().toISOString(),baselineCapturedAt:comparison.capturedAt||t.baselineSnapshot?.capturedAt||null,benchmarkId,benchmarkSymbol:benchmarkAsset?.symbol||t.assetSymbol||"",selectedAssets:comparison.assets.length,replayedAssets:assets.length,availableAssets,status:availableAssets===assets.length?"complete":availableAssets?"partial":"unavailable",cohortRelativePct:relatives.length?relatives.reduce((sum,value)=>sum+value,0)/relatives.length:null,items};
+  return {sourceProvider:availableAssets?"coinmarketcap":"unavailable",sourceEndpoint:"/v3/cryptocurrency/quotes/latest",capturedAt:new Date().toISOString(),baselineCapturedAt:comparison.capturedAt||t.baselineSnapshot?.capturedAt||null,benchmarkId,benchmarkSymbol:benchmarkAsset?.symbol||t.assetSymbol||"",selectedAssets:comparison.assets.length,replayedAssets:assets.length,availableAssets,status:!comparisonReady?"not_comparable":availableAssets===assets.length?"complete":availableAssets?"partial":"unavailable",cohortRelativePct:relatives.length?relatives.reduce((sum,value)=>sum+value,0)/relatives.length:null,items};
 }
 
 function comparisonReplayMarkup(replay){
@@ -329,10 +330,10 @@ function comparisonReplayMarkup(replay){
     const latest=item.currentPrice===null||item.currentPrice===undefined?"—":money(item.currentPrice,item.currentPrice<1?4:2);
     const change=item.priceReturnPct===null?"—":fmtPercent(item.priceReturnPct);
     const relative=item.relativeToBenchmarkPp===null?"—":`${fmtPercent(item.relativeToBenchmarkPp)} pp`;
-    const status=item.status==="live"?(item.sourceObservedAt?`CMC observed ${safeDate(item.sourceObservedAt)}`:"CMC quote retrieved; source timestamp unavailable"):item.status==="invalid_id"?"Saved CMC ID is invalid":"Fresh quote unavailable; no return calculated";
+    const status=item.status==="live"?(item.sourceObservedAt?`CMC observed ${safeDate(item.sourceObservedAt)}`:"CMC quote retrieved; source timestamp unavailable"):item.status==="invalid_id"?"Saved CMC ID is invalid":replay.status==="not_comparable"?"Requires a live CMC source and a CMC-captured baseline":"Fresh quote unavailable; no return calculated";
     return `<div class="evidence-row"><i style="background:${item.status==="live"?"var(--lime)":"var(--quiet)"}"></i><div><strong>${escapeHtml(item.name||item.symbol||"Asset")} <span style="color:var(--lime);font-family:var(--mono);font-weight:400">${escapeHtml(item.symbol||"")} · CMC #${escapeHtml(item.id)}</span></strong><small>Baseline ${baseline} → latest ${latest} · return ${change} · relative vs ${escapeHtml(replay.benchmarkSymbol||"primary asset")} ${relative}</small><small>${escapeHtml(status)} · retrieved ${escapeHtml(item.retrievedAt?safeDate(item.retrievedAt):"unavailable")}</small></div></div>`;
   }).join("");
-  const status=replay.status==="complete"?"All saved assets refreshed":replay.status==="partial"?"Partial refresh; unavailable assets remain blank":"No matched live CMC quotes were available";
+  const status=replay.status==="complete"?"All saved assets refreshed":replay.status==="partial"?"Partial refresh; unavailable assets remain blank":replay.status==="not_comparable"?"Replay requires live CMC data and a CMC-captured baseline":"No matched live CMC quotes were available";
   const cohort=replay.cohortRelativePct===null?"The relative cohort return is unavailable.":`Equal-weight mean return of refreshed non-benchmark assets versus ${escapeHtml(replay.benchmarkSymbol||"the primary asset")}: ${fmtPercent(replay.cohortRelativePct)} percentage points.`;
   return `<div class="detail-section" data-comparison-replay><h3>COMPARISON REPLAY · RELATIVE VS ${escapeHtml(replay.benchmarkSymbol||"PRIMARY ASSET")}</h3><div class="detail-note">${status} · ${replay.availableAssets}/${replay.replayedAssets} refreshed. Each return uses the saved baseline quote and the validated live CMC quote. Relative values are percentage-point differences versus the primary asset; the cohort summary is equal-weighted. ${cohort} Missing values are not imputed. This is descriptive evidence, not a prediction.</div><div class="detail-evidence">${rows}</div></div>`;
 }
