@@ -68,6 +68,7 @@ function normalizeOverview(globalData, listings) {
       id: String(item.id), name: item.name, symbol: item.symbol,
       price: usd.price, change24h: usd.percent_change_24h,
       marketCap: usd.market_cap, volume24h: usd.volume_24h,
+      observedAt: usd.last_updated || item.last_updated || null,
       color: "#8ca2ec", peers: categoryFor(item.tags || []) || "market context",
       peerDelta: 50, tags: item.tags || []
     };
@@ -166,7 +167,7 @@ async function liveSearch(query) {
     const item = byId.get(String(meta.id));
     if (!item) return null;
     const usd = quoteFor(item);
-    return { id: String(item.id), name: item.name, symbol: item.symbol, price: usd.price, change24h: usd.percent_change_24h, marketCap: usd.market_cap, volume24h: usd.volume_24h, color: "#8ca2ec", peers: categoryFor(item.tags || []) || "market context", tags: item.tags || [] };
+    return { id: String(item.id), name: item.name, symbol: item.symbol, price: usd.price, change24h: usd.percent_change_24h, marketCap: usd.market_cap, volume24h: usd.volume_24h, observedAt: usd.last_updated || item.last_updated || null, color: "#8ca2ec", peers: categoryFor(item.tags || []) || "market context", tags: item.tags || [] };
   }).filter(Boolean);
 }
 
