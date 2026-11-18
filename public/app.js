@@ -24,6 +24,8 @@ const state = {
   activeFilter: "all",
   comparePeriod: "7D",
   compareSymbols: ["BTC", "ETH", "SOL"],
+  comparePickerOpen: false,
+  comparePickerQuery: "",
   historicalCache: {},
   historyPending: {},
   currentAsset: null,
@@ -279,15 +281,29 @@ function renderExplore(filter="") {
   host.querySelectorAll("[data-asset]").forEach(el=>el.addEventListener("click",()=>showAsset(el.dataset.asset)));
 }
 
+function renderComparePickerResults() {
+  const host=document.getElementById("compare-search-results");if(!host)return;
+  const q=state.comparePickerQuery.trim().toLowerCase();
+  const rows=state.data.assets.filter(a=>!state.compareSymbols.includes(a.symbol)&&(!q||a.name.toLowerCase().includes(q)||a.symbol.toLowerCase().includes(q)||String(a.id)===q)).slice(0,6);
+  if(!rows.length){host.innerHTML=`<div class="compare-picker-empty">${state.data.mode==="live"&&q.length>=2?"Searching CoinMarketCap…":"No matching assets in the loaded list."}</div>`;return;}
+  host.innerHTML=rows.map(a=>`<button class="compare-picker-option" data-compare-symbol="${escapeHtml(a.symbol)}"><span>${escapeHtml(a.name)}</span><small>${escapeHtml(a.symbol)} · ${money(a.price,a.price<1?4:2)}</small><b>＋</b></button>`).join("");
+  host.querySelectorAll("[data-compare-symbol]").forEach(el=>el.addEventListener("click",()=>{if(state.compareSymbols.length>=4){toast("Compare up to four assets at a time.");return;}state.compareSymbols.push(el.dataset.compareSymbol);state.comparePickerOpen=false;state.comparePickerQuery="";renderCompare();loadCompareHistory();}));
+}
+
 function renderCompare() {
   const assets=state.compareSymbols.map(assetBySymbol).filter(Boolean);
   const colors=["var(--lime)","var(--blue)","var(--orange)","var(--red)"];
-  document.getElementById("compare-assets").innerHTML=assets.map((a,i)=>`<span class="compare-chip" style="--chip:${colors[i]}"><i></i>${escapeHtml(a.symbol)}<button data-remove-symbol="${a.symbol}" aria-label="Remove ${a.symbol}">×</button></span>`).join("")+`<button class="compare-chip" id="compare-add">＋ Add asset</button>`;
+  const addDisabled=assets.length>=4?" disabled aria-disabled=\"true\"":"";
+  const picker=state.comparePickerOpen?`<div class="compare-picker"><input id="compare-asset-search" aria-label="Search assets to compare" placeholder="Search name or symbol" value="${escapeHtml(state.comparePickerQuery)}" autocomplete="off"/><div id="compare-search-results" class="compare-picker-results"></div></div>`:"";
+  document.getElementById("compare-assets").innerHTML=assets.map((a,i)=>`<span class="compare-chip" style="--chip:${colors[i]}"><i></i>${escapeHtml(a.symbol)}<button data-remove-symbol="${a.symbol}" aria-label="Remove ${a.symbol}">×</button></span>`).join("")+`<button class="compare-chip" id="compare-add"${addDisabled}>＋ Add asset</button>`+picker;
   document.getElementById("compare-legend").innerHTML=assets.map((a,i)=>`<span><i style="--chip:${colors[i]}"></i>${escapeHtml(a.symbol)}</span>`).join("");
   drawCompareChart(assets, colors);
   document.getElementById("compare-table").innerHTML=`<div class="compare-table-head"><span>ASSET</span><span>24H CHANGE</span><span>MARKET CAP</span><span>PEER CONTEXT</span></div>${assets.map((a,i)=>`<div class="compare-table-row"><span class="asset-cell"><i style="width:7px;height:7px;border-radius:50%;background:${colors[i]}"></i>${escapeHtml(a.name)} (${escapeHtml(a.symbol)})</span><span style="color:${a.change24h>=0?"var(--lime)":"var(--red)"}">${fmtPercent(a.change24h)}</span><span>${amountLabel(a.marketCap)}</span><span>${escapeHtml(a.peers)}</span></div>`).join("")}`;
   document.querySelectorAll("[data-remove-symbol]").forEach(el=>el.addEventListener("click",()=>{state.compareSymbols=state.compareSymbols.filter(x=>x!==el.dataset.removeSymbol);renderCompare();loadCompareHistory();}));
-  const add=document.getElementById("compare-add");if(add)add.addEventListener("click",()=>{const candidate=state.data.assets.find(a=>!state.compareSymbols.includes(a.symbol));if(!candidate){toast("All demo assets are already in the comparison.");return;}state.compareSymbols.push(candidate.symbol);renderCompare();loadCompareHistory();});
+  const add=document.getElementById("compare-add");
+  if(add)add.addEventListener("click",()=>{if(state.compareSymbols.length>=4){toast("Compare up to four assets at a time.");return;}state.comparePickerOpen=!state.comparePickerOpen;state.comparePickerQuery="";renderCompare();if(state.comparePickerOpen){const input=document.getElementById("compare-asset-search");input.focus();renderComparePickerResults();}});
+  const input=document.getElementById("compare-asset-search");
+  if(input){let timer;input.addEventListener("input",()=>{state.comparePickerQuery=input.value;renderComparePickerResults();clearTimeout(timer);if(state.data.mode==="live"&&input.value.trim().length>=2)timer=setTimeout(()=>searchRemote(input.value.trim(),"compare"),450);});renderComparePickerResults();}
 }
 
 function drawCompareChart(assets, colors) {
@@ -492,8 +508,8 @@ function setup() {
   refreshData();
 }
 
-async function searchRemote(q){
-  try{const r=await fetch(`/api/market?view=search&q=${encodeURIComponent(q)}`,{headers:{Accept:"application/json"}});if(!r.ok)return;const body=await r.json();if(body.mode!=="live"||!Array.isArray(body.assets))return;const existing=new Set(state.data.assets.map(a=>a.symbol));state.data.assets=[...state.data.assets,...body.assets.filter(a=>!existing.has(a.symbol))];renderExplore(document.getElementById("asset-search").value);}
+async function searchRemote(q,target="explore"){
+  try{const r=await fetch(`/api/market?view=search&q=${encodeURIComponent(q)}`,{headers:{Accept:"application/json"}});if(!r.ok)return;const body=await r.json();if(body.mode!=="live"||!Array.isArray(body.assets))return;const existing=new Set(state.data.assets.map(a=>a.symbol));state.data.assets=[...state.data.assets,...body.assets.filter(a=>!existing.has(a.symbol))];if(target==="compare")renderComparePickerResults();else renderExplore(document.getElementById("asset-search").value);}
   catch{ /* Keep the already-rendered search results usable if the API is unavailable. */ }
 }
 
