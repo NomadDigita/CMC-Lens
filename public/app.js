@@ -125,7 +125,13 @@ function setConnection(mode, timestamp) {
     stateLabel.textContent = "· demo values";
   }
   const settings = document.getElementById("settings-data-status");
+  const settingsBadge = document.getElementById("settings-data-badge");
   if (settings) settings.textContent = connected ? "Live data is coming from the CoinMarketCap API." : "Sample data is active. Live data is not connected.";
+  if (settingsBadge) {
+    settingsBadge.textContent = connected ? "LIVE" : "DEMO";
+    settingsBadge.classList.toggle("live-status", connected);
+    settingsBadge.classList.toggle("demo-status", !connected);
+  }
 }
 
 function render() {
