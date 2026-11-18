@@ -31,16 +31,13 @@ async function cmc(path, params) {
     headers: { "X-CMC_PRO_API_KEY": process.env.CMC_PRO_API_KEY, Accept: "application/json" },
     signal: AbortSignal.timeout(9000)
   });
-  if (!response.ok) {
+  const payload = await response.json();
+  const cmcCode = Number(payload?.status?.error_code ?? 0);
+  if (!response.ok || (Number.isFinite(cmcCode) && cmcCode !== 0)) {
     const error = new Error("CoinMarketCap request failed");
     error.status = response.status;
-    throw error;
-  }
-  const payload = await response.json();
-  if (payload?.status?.error_code) {
-    const error = new Error("CoinMarketCap returned an API error");
-    error.cmcCode = payload.status.error_code;
-    error.cmcMessage = payload.status.error_message;
+    error.cmcCode = Number.isFinite(cmcCode) && cmcCode !== 0 ? cmcCode : undefined;
+    error.cmcMessage = payload?.status?.error_message;
     throw error;
   }
   return payload.data;
@@ -251,9 +248,10 @@ module.exports = async function handler(req, res) {
     return reply(res, 200, await liveOverview());
   } catch (error) {
     const upstreamStatus = Number(error.status || 0);
-    if (upstreamStatus === 429 || error.cmcCode === 1008) return reply(res, 429, { error: "CMC_RATE_LIMITED", retryable: true });
-    if (error.cmcCode === 1006 || error.cmcCode === 1007 || upstreamStatus === 401 || upstreamStatus === 403) return reply(res, 503, { error: "CMC_ENTITLEMENT_OR_KEY", message: "The configured CMC key or plan cannot access this data." });
-    if (upstreamStatus >= 500 || error.name === "TimeoutError" || error.name === "AbortError") return reply(res, 502, { error: "CMC_UPSTREAM_UNAVAILABLE", retryable: true });
-    return reply(res, 502, { error: "CMC_UPSTREAM_ERROR", retryable: false });
+    const cmcCode = Number(error.cmcCode || 0) || null;
+    if (upstreamStatus === 429 || [1008, 1009, 1010, 1011].includes(cmcCode)) return reply(res, 429, { error: "CMC_RATE_LIMITED", retryable: true, cmcCode });
+    if ([1001, 1002, 1003, 1004, 1005, 1006, 1007].includes(cmcCode) || [401, 402, 403].includes(upstreamStatus)) return reply(res, 503, { error: "CMC_ENTITLEMENT_OR_KEY", retryable: false, upstreamStatus: upstreamStatus || null, cmcCode });
+    if (upstreamStatus >= 500 || error.name === "TimeoutError" || error.name === "AbortError") return reply(res, 502, { error: "CMC_UPSTREAM_UNAVAILABLE", retryable: true, upstreamStatus: upstreamStatus || null });
+    return reply(res, 502, { error: "CMC_UPSTREAM_ERROR", retryable: false, upstreamStatus: upstreamStatus || null, cmcCode });
   }
 };
