@@ -477,15 +477,16 @@ module.exports = async function handler(req, res) {
       if((endDate-startDate)>366*24*60*60*1000)return reply(res,400,{error:"WINDOW_TOO_WIDE",sourceReceipts});
       const canonicalIds=[...ids].sort();
       const startIso=startDate.toISOString(),endIso=endDate.toISOString();
-      const cacheKey="window-history:"+canonicalIds.join(",")+":"+startIso+":"+endIso;
+      const authParts=String(req.headers?.authorization||"").trim().split(/\s+/);
+      const token=authParts[0]?.toLowerCase()==="bearer"?authParts.slice(1).join(" "):null;
+      if(!token)return reply(res,401,{error:"CMC_HISTORY_AUTH_REQUIRED",sourceReceipts});
+      const cacheEndIso=new Date(Math.floor(endDate.getTime()/WINDOW_HISTORY_CACHE_MS)*WINDOW_HISTORY_CACHE_MS).toISOString();
+      const cacheKey="window-history:"+canonicalIds.join(",")+":"+startIso+":"+cacheEndIso;
       const cached=getCached(cacheKey,WINDOW_HISTORY_CACHE_MS);
       if(cached){
         sourceReceipts.push(...cachedSourceReceipts(cached.sourceReceipts));
         return reply(res,200,{mode:"live",retrievedAt:new Date().toISOString(),source:{provider:"CoinMarketCap",endpoint:"/v3/cryptocurrency/quotes/historical",interval:"24h",cache:"hit"},timeStart:startIso,timeEnd:endIso,series:cached.series,sourceReceipts});
       }
-      const authParts=String(req.headers?.authorization||"").trim().split(/\s+/);
-      const token=authParts[0]?.toLowerCase()==="bearer"?authParts.slice(1).join(" "):null;
-      if(!token)return reply(res,401,{error:"CMC_HISTORY_AUTH_REQUIRED",sourceReceipts});
       const requestedDays=Math.ceil((endDate-startDate)/(24*60*60*1000))+1;
       const estimatedCredits=Math.max(1,Math.ceil(requestedDays*canonicalIds.length/100));
       const budget=await reserveSharedWindowHistoryBudget(token,estimatedCredits);
