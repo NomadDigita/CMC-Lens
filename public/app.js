@@ -414,9 +414,11 @@ async function activateAccountWorkspace(user) {
   const accountExists=localStorage.getItem(accountKey)!==null;
   const guest=loadTheses();
   let account=loadTheses(accountKey);
+  let importedGuest=false;
   if(!localStorage.getItem(setupKey)){
     if(!accountExists&&guest.length){
       if(await chooseGuestImport(guest.length,user.email)){
+        importedGuest=true;
         const byId=new Map(account.map(t=>[t.id,t]));
         for(const t of guest)if(!byId.has(t.id))byId.set(t.id,t);
         account=[...byId.values()];
@@ -426,6 +428,7 @@ async function activateAccountWorkspace(user) {
   }
   state.theses=account;
   localStorage.setItem(accountKey,JSON.stringify(account));
+  if(importedGuest)localStorage.removeItem("cmc-lens-theses");
   renderThesisCards();
 }
 
