@@ -52,7 +52,9 @@ function quoteFor(item) {
 }
 
 function categoryFor(tags = []) {
-  const normalized = tags.map(tag => String(tag).toLowerCase());
+  const normalized = tags.map(tag => typeof tag === "string"
+    ? tag.toLowerCase()
+    : `${tag?.slug || ""} ${tag?.name || ""} ${tag?.category || ""}`.toLowerCase());
   if (normalized.some(tag => /meme/.test(tag))) return "Meme";
   if (normalized.some(tag => /gaming|gamefi|play-to-earn/.test(tag))) return "Gaming";
   if (normalized.some(tag => /artificial-intelligence|ai-and-big-data|ai/.test(tag))) return "AI & Data";
@@ -107,7 +109,8 @@ function normalizeOverview(globalData, listings) {
     retrievedAt: new Date().toISOString(),
     global: {
       marketCap: quote.total_market_cap,
-      marketCapChange24h: quote.total_market_cap_yesterday_percentage_change,
+      marketCapChange24h: Number.isFinite(Number(quote.total_market_cap_yesterday_percentage_change))
+        ? Number(quote.total_market_cap_yesterday_percentage_change) : null,
       btcDominance: globalData?.btc_dominance,
       btcDominanceChange24h: globalData?.btc_dominance_24h_percentage_change,
       breadth: total ? Math.round((rising / total) * 100) : null,
