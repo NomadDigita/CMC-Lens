@@ -20,13 +20,15 @@ A chart comparison is easy to lose once a user changes screens. A thesis written
 
 - Keep the selected comparison period and two to four distinct CMC asset IDs.
 - Start a thesis from the comparison and preselect its primary asset.
-- Preserve the original selected assets, available USD quotes, source provider, source timestamps, and capture time with the baseline snapshot.
+- Preserve the original selected asset IDs, price, 24h change, market cap, volume, peer context, source provider, quote timestamps, coverage, and capture time with the baseline snapshot.
+- Preserve cached selected-period historical price points by asset ID when available; say when history was not loaded, and never synthesize live evidence.
 - Reopen a thesis and inspect the original comparison even if current comparison selections have changed.
 - Keep the user’s interpretation and conditions editable; do not generate a score or buy/sell direction.
 
 ### 2. Review snapshots
 
 - Append a dated review without altering the original baseline or prior reviews.
+- Preserve source retrieval time separately from source observation time, including a null source timestamp when the provider did not supply one.
 - Retrieve a fresh CMC quote only for a valid CMC numeric asset ID and verify the response ID matches it.
 - Preserve a missing source timestamp as missing; retrieval time is shown separately.
 - Derive price change only when baseline and review prices are valid and source contexts are comparable.
