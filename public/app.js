@@ -347,7 +347,7 @@ function thesisForm({assets=state.data.assets,primaryId=null,comparison=null}={}
     e.preventDefault(); const fd=new FormData(e.currentTarget); const assetId=String(fd.get("asset")); const a=options.find(row=>String(row.id)===assetId)||null; const symbol=a?.symbol||""; const d=new Date();
     const review=new Date();review.setDate(review.getDate()+Number(fd.get("horizon")));
     const source=state.data.mode==="live"?"CoinMarketCap":"Demo dataset";
-    const t={id:crypto.randomUUID(),title:String(fd.get("title")).trim(),assetId:a?.id||null,assetSymbol:symbol,assetName:a?.name||symbol,view:String(fd.get("view")||"").trim(),condition:String(fd.get("condition")||"").trim(),createdAt:d.toISOString(),reviewAt:review.toISOString(),status:"open",baselineSnapshotId:crypto.randomUUID(),baselineSnapshot:{...(comparison?{comparison}:{}),sourceProvider:source==="CoinMarketCap"?"coinmarketcap":"demo",sourceEndpoint:source==="CoinMarketCap"?"/v3/cryptocurrency/quotes/latest":null,sourceObservedAt:a?.observedAt??null,capturedAt:d.toISOString(),currency:"USD",metrics:{price:a?.price??null,change24h:a?.change24h??null,marketCap:a?.marketCap??null,volume24h:a?.volume24h??null,peerContext:a?.peers||null},coverage:source==="CoinMarketCap"?"complete":"partial",limitations:source==="CoinMarketCap"?"Quote snapshot only; it does not establish the cause of a price move.":"Illustrative demo values, not live market evidence."},evidence:[{label:`${symbol} 24h change`,value:fmtOptionalPercent(a?.change24h),detail:`Observed at ${d.toISOString()} · source timestamp ${a?.observedAt??"not supplied"}.`,source},{label:`${symbol} price`,value:money(a?.price,a?.price<1?4:2),detail:"Quote currency USD · source value captured when the thesis was recorded.",source},{label:"Market capitalization",value:amountLabel(a?.marketCap),detail:"CMC-reported market capitalization at the baseline capture.",source},{label:"Research context",value:a?.peers||"Market",detail:"Peer context is shown as a prompt for investigation, not as a prediction."}],reviews:[]};
+    const t={id:crypto.randomUUID(),title:String(fd.get("title")).trim(),assetId:a?.id||null,assetSymbol:symbol,assetName:a?.name||symbol,view:String(fd.get("view")||"").trim(),condition:String(fd.get("condition")||"").trim(),createdAt:d.toISOString(),updatedAt:d.toISOString(),reviewAt:review.toISOString(),status:"open",baselineSnapshotId:crypto.randomUUID(),baselineSnapshot:{...(comparison?{comparison}:{}),sourceProvider:source==="CoinMarketCap"?"coinmarketcap":"demo",sourceEndpoint:source==="CoinMarketCap"?"/v3/cryptocurrency/quotes/latest":null,sourceObservedAt:a?.observedAt??null,capturedAt:d.toISOString(),currency:"USD",metrics:{price:a?.price??null,change24h:a?.change24h??null,marketCap:a?.marketCap??null,volume24h:a?.volume24h??null,peerContext:a?.peers||null},coverage:source==="CoinMarketCap"?"complete":"partial",limitations:source==="CoinMarketCap"?"Quote snapshot only; it does not establish the cause of a price move.":"Illustrative demo values, not live market evidence."},evidence:[{label:`${symbol} 24h change`,value:fmtOptionalPercent(a?.change24h),detail:`Observed at ${d.toISOString()} · source timestamp ${a?.observedAt??"not supplied"}.`,source},{label:`${symbol} price`,value:money(a?.price,a?.price<1?4:2),detail:"Quote currency USD · source value captured when the thesis was recorded.",source},{label:"Market capitalization",value:amountLabel(a?.marketCap),detail:"CMC-reported market capitalization at the baseline capture.",source},{label:"Research context",value:a?.peers||"Market",detail:"Peer context is shown as a prompt for investigation, not as a prediction."}],reviews:[]};
     state.theses.unshift(t);saveTheses();renderThesisCards();closeModal();toast("Thesis saved with a dated evidence snapshot.");
   });
 }
@@ -357,7 +357,7 @@ function showThesis(id) {
   const evidence=(t.evidence||[]).map(e=>`<div class="evidence-row"><i></i><div><strong>${escapeHtml(e.label)} <span style="color:var(--lime);font-family:var(--mono);font-weight:400">${escapeHtml(e.value)}</span></strong><small>${escapeHtml(e.detail)} Source: ${escapeHtml(e.source)}.</small></div></div>`).join("");
   const review=(t.reviews||[]).map(r=>`<div class="evidence-row"><i style="background:var(--blue)"></i><div><strong>Review · ${safeDate(r.date)} <span style="color:var(--blue);font-family:var(--mono);font-weight:400">${escapeHtml(r.result||"Observation")}</span></strong><small>${escapeHtml(r.note)}</small>${r.snapshot?.derivedMetrics?.priceChangeSinceBaselinePct!==null&&r.snapshot?.derivedMetrics?.priceChangeSinceBaselinePct!==undefined?`<small>Price change since baseline: ${fmtPercent(r.snapshot.derivedMetrics.priceChangeSinceBaselinePct)} · ${escapeHtml(r.snapshot.sourceProvider||"source unavailable")}</small>`:""}${r.snapshot?.comparisonReplay?`<small>Saved comparison replay: ${r.snapshot.comparisonReplay.availableAssets}/${r.snapshot.comparisonReplay.replayedAssets} live quotes · equal-weight peer mean relative to ${escapeHtml(r.snapshot.comparisonReplay.benchmarkSymbol||"primary asset")}: ${r.snapshot.comparisonReplay.cohortRelativePct===null?"—":fmtPercent(r.snapshot.comparisonReplay.cohortRelativePct)+" pp"}</small>`:""}</div></div>`).join("");
   const due=t.status!=="reviewed"&&new Date(t.reviewAt)<=new Date();
-  openModal(`<div class="modal-head"><div><div class="panel-kicker">${escapeHtml(t.assetSymbol||"MARKET")} · ${escapeHtml(statusLabel(t).toUpperCase())}</div><h2 id="modal-title">${escapeHtml(t.title)}</h2><p>Logged ${safeDate(t.createdAt)} · Review ${safeDate(t.reviewAt)}</p></div><button id="modal-close" class="modal-close" aria-label="Close">×</button></div><div class="detail-content"><div class="detail-section"><h3>THE VIEW AT THE TIME</h3><div class="detail-note">${escapeHtml(t.view||"No written explanation added yet.")}${t.condition?`<br/><br/><strong style="color:var(--text-2)">Condition to revisit:</strong> ${escapeHtml(t.condition)}`:""}</div></div><div class="detail-section"><h3>ORIGINAL EVIDENCE · PRESERVED</h3><div class="detail-evidence">${evidence||"<div class='detail-note'>No evidence snapshot attached.</div>"}</div></div>${savedComparisonMarkup(t.baselineSnapshot?.comparison)}${review?`<div class="detail-section"><h3>REVIEW HISTORY</h3><div class="detail-evidence">${review}</div></div>`:""}<div class="detail-actions"><button class="danger-button" id="delete-thesis">Delete record</button><div><button class="primary-button" id="review-thesis">${due?"Review this thesis":"Add another review"} <span>→</span></button></div></div></div>`);
+  openModal(`<div class="modal-head"><div><div class="panel-kicker">${escapeHtml(t.assetSymbol||"MARKET")} · ${escapeHtml(statusLabel(t).toUpperCase())}</div><h2 id="modal-title">${escapeHtml(t.title)}</h2><p>Logged ${safeDate(t.createdAt)} · Review ${safeDate(t.reviewAt)}</p></div><button id="modal-close" class="modal-close" aria-label="Close">×</button></div><div class="detail-content"><div class="detail-section"><h3>THE VIEW AT THE TIME</h3><div class="detail-note">${escapeHtml(t.view||"No written explanation added yet.")}${t.condition?`<br/><br/><strong style="color:var(--text-2)">Condition to revisit:</strong> ${escapeHtml(t.condition)}`:""}</div></div><div class="detail-section"><h3>ORIGINAL EVIDENCE · PRESERVED</h3><div class="detail-evidence">${evidence||"<div class='detail-note'>No evidence snapshot attached.</div>"}</div></div>${savedComparisonMarkup(t.baselineSnapshot?.comparison)}${(t.additionalBaselines||[]).map(item=>`<div class="detail-section"><h3>ALTERNATE BASELINE PRESERVED</h3><div class="detail-note">A second baseline was found during account sync. The cloud-linked baseline remains canonical; this local snapshot has been preserved separately as additional evidence · ${escapeHtml(item.id)}</div>${savedComparisonMarkup(item.baselineSnapshot?.comparison)}</div>`).join("")}${t.syncConflict?`<div class="detail-section"><h3>SYNC CONFLICT NOTE</h3><div class="detail-note">The ${t.syncConflict.kept==="remote"?"newer cloud":"newer local"} version was kept. The alternate version remains in this device’s saved record: <strong>${escapeHtml(t.syncConflict.alternate?.title||"Untitled")}</strong> · ${escapeHtml(t.syncConflict.alternate?.updatedAt||"timestamp unavailable")}.</div></div>`:""}${review?`<div class="detail-section"><h3>REVIEW HISTORY</h3><div class="detail-evidence">${review}</div></div>`:""}<div class="detail-actions"><button class="danger-button" id="delete-thesis">Delete record</button><div><button class="primary-button" id="review-thesis">${due?"Review this thesis":"Add another review"} <span>→</span></button></div></div></div>`);
   document.getElementById("delete-thesis").addEventListener("click",async()=>{if(!window.confirm("Delete this research record and its synced evidence?"))return;const owner=state.auth.user?.id||null,epoch=state.auth.sessionEpoch,token=state.auth.session?.access_token;try{if(owner)await sbRequest("/rest/v1/theses?id=eq."+encodeURIComponent(id),{method:"DELETE",token});if(state.auth.sessionEpoch!==epoch||(state.auth.user?.id||null)!==owner)return;state.theses=state.theses.filter(x=>x.id!==id);saveTheses(false);renderThesisCards();closeModal();toast("Research record deleted.");}catch{if(state.auth.sessionEpoch===epoch&&(state.auth.user?.id||null)===owner)toast("The record could not be deleted from your synced workspace.",true);}});
   const rb=document.getElementById("review-thesis"); if(rb)rb.addEventListener("click",()=>reviewThesis(id));
 }
@@ -392,7 +392,7 @@ async function reviewThesis(id) {
   const snapshotView=`<div class="detail-section"><h3>BASELINE VS REVIEW SNAPSHOT</h3><div class="review-snapshot-grid"><div class="review-snapshot-cell"><small>ORIGINAL BASELINE</small><strong>${formatPrice(baselinePrice)}</strong><span>Price · USD</span><small>Captured ${safeDate(baselineLabel)}</small><strong>${formatCap(baselineCap)}</strong><span>Market cap</span></div><div class="review-snapshot-cell"><small>${currentLabel}</small><strong>${formatPrice(currentPrice)}</strong><span>Price · USD</span><small>${live&&observedAt?`Source updated ${safeDate(observedAt)}`:live?`Retrieved ${safeDate(capturedAt)}`:"Illustrative values only"}</small><strong>${formatCap(currentCap)}</strong><span>Market cap</span></div></div><div class="detail-note">${priceDelta===null?"A price change could not be calculated from the saved baseline.":`Price change since baseline: ${fmtPercent(priceDelta)}.`} ${live?"A quote change is evidence for your review, not a prediction.":"No live CMC evidence is attached to this review."}</div></div>`;
   openModal(`<div class="modal-head"><div><div class="panel-kicker">${escapeHtml(t.assetSymbol||"MARKET")} · ADD A DATED OBSERVATION</div><h2 id="modal-title">Review your thesis</h2><p>The baseline stays frozen. Record what the latest evidence means to you.</p></div><button id="modal-close" class="modal-close" aria-label="Close">×</button></div><div class="detail-content">${snapshotView}${comparisonReplayMarkup(comparisonReplay)}<form class="thesis-form" id="review-form"><div class="field"><label for="review-result">HOW DOES THE VIEW LOOK TODAY?</label><select id="review-result"><option value="Still supported">Still supported</option><option value="Mixed evidence">Mixed evidence</option><option value="Weakened">Weakened</option><option value="No longer relevant">No longer relevant</option></select></div><div class="field"><label for="review-note">WHAT CHANGED?</label><textarea id="review-note" required maxlength="500" placeholder="Compare today's evidence with the original baseline..."></textarea><span class="field-help">${live?`Source: CoinMarketCap · ${escapeHtml(observedAt?new Date(observedAt).toLocaleString():new Date(capturedAt).toLocaleString())}. `:state.data.mode==="demo"?"Demo values only; no current CMC quote was captured. ":"The current CMC quote could not be retrieved. "}CMC Lens records your interpretation without scoring it as a prediction.</span></div><div class="form-actions"><button type="button" class="form-cancel" id="review-cancel">Cancel</button><button type="submit" class="primary-button">Append review <span>→</span></button></div></form></div>`);
   document.getElementById("review-cancel").addEventListener("click",()=>showThesis(id));
-  document.getElementById("review-form").addEventListener("submit",e=>{e.preventDefault();const result=document.getElementById("review-result").value;const note=document.getElementById("review-note").value.trim();snapshot.comparisonReplay=comparisonReplay;t.reviews.push({id:crypto.randomUUID(),snapshotId:crypto.randomUUID(),date:capturedAt,result,note,snapshot});t.status="reviewed";t.lastReviewedAt=capturedAt;saveTheses();renderThesisCards();closeModal();toast("Review appended with its source snapshot.");});
+  document.getElementById("review-form").addEventListener("submit",e=>{e.preventDefault();const result=document.getElementById("review-result").value;const note=document.getElementById("review-note").value.trim();snapshot.comparisonReplay=comparisonReplay;t.reviews.push({id:crypto.randomUUID(),snapshotId:crypto.randomUUID(),date:capturedAt,result,note,snapshot});t.status="reviewed";t.lastReviewedAt=capturedAt;t.updatedAt=capturedAt;saveTheses();renderThesisCards();closeModal();toast("Review appended with its source snapshot.");});
 }
 function showAsset(symbol) {
   const a=assetBySymbol(symbol);if(!a)return;
@@ -644,6 +644,81 @@ function authForm(step="email"){
   });
 }
 
+function resolveThesisSyncConflict(thesis,remote){
+  if(!remote)return "local";
+  const fields={title:thesis.title,thesis_text:thesis.view||"",review_at:thesis.reviewAt||null,primary_asset_id:thesis.assetId||null,primary_asset_symbol:thesis.assetSymbol||null,status:thesis.status||"open"};
+  const remoteFields={title:remote.title,thesis_text:remote.thesis_text||"",review_at:remote.review_at||null,primary_asset_id:remote.primary_asset_id||null,primary_asset_symbol:remote.primary_asset_symbol||null,status:remote.status||"open"};
+  const differs=Object.keys(fields).some(key=>String(fields[key]??"")!==String(remoteFields[key]??""));
+  const localTime=Date.parse(thesis.updatedAt||thesis.lastReviewedAt||thesis.createdAt||"")||0;
+  const remoteTime=Date.parse(remote.updated_at||remote.created_at||"")||0;
+  if(!differs)return "local";
+  const localDraft={title:fields.title,view:fields.thesis_text,reviewAt:fields.review_at,assetId:fields.primary_asset_id,assetSymbol:fields.primary_asset_symbol,updatedAt:thesis.updatedAt||thesis.createdAt};
+  const remoteDraft={title:remoteFields.title,view:remoteFields.thesis_text,reviewAt:remoteFields.review_at,assetId:remoteFields.primary_asset_id,assetSymbol:remoteFields.primary_asset_symbol,updatedAt:remote.updated_at||remote.created_at};
+  if(remoteTime>=localTime){
+    thesis.syncConflict={kept:"remote",detectedAt:new Date().toISOString(),alternate:localDraft};
+    thesis.title=remoteFields.title;thesis.view=remoteFields.thesis_text;thesis.reviewAt=remoteFields.review_at;thesis.assetId=remoteFields.primary_asset_id;thesis.assetSymbol=remoteFields.primary_asset_symbol;thesis.status=remoteFields.status;thesis.updatedAt=remote.updated_at||remote.created_at;
+    return "remote";
+  }
+  thesis.syncConflict={kept:"local",detectedAt:new Date().toISOString(),alternate:remoteDraft};
+  return "local";
+}
+function reconcileConditionForSync(thesis,remoteCondition){
+  if(!remoteCondition)return "local";
+  const local=String(thesis.condition||""),remote=String(remoteCondition.description||"");
+  const localActive=thesis.conditionActive===undefined?!!local:!!thesis.conditionActive;
+  const remoteActive=remoteCondition.active===true;
+  thesis.conditionId=remoteCondition.id;
+  if(local===remote&&localActive===remoteActive){thesis.conditionActive=remoteActive;return "same";}
+  const localTime=Date.parse(thesis.updatedAt||thesis.lastReviewedAt||thesis.createdAt||"")||0;
+  const remoteTime=Date.parse(remoteCondition.updated_at||remoteCondition.created_at||"")||0;
+  if(remoteTime>=localTime){thesis.syncConflict={kept:"remote",detectedAt:new Date().toISOString(),alternate:{title:thesis.title,condition:local,conditionActive:localActive,updatedAt:thesis.updatedAt||thesis.createdAt}};thesis.condition=remoteActive?remote:"";thesis.conditionActive=remoteActive;return "remote";}
+  thesis.syncConflict={kept:"local",detectedAt:new Date().toISOString(),alternate:{title:thesis.title,condition:remote,conditionActive:remoteActive,updatedAt:remoteCondition.updated_at||remoteCondition.created_at}};
+  thesis.conditionActive=localActive;
+  return "local";
+}
+function reconcileThesisHistory(localTheses,remoteTheses,evidenceRows,reviewRows,snapshotRows,conditionRows){
+  const records=new Map((localTheses||[]).map(t=>[t.id,t]));
+  const remoteById=new Map((remoteTheses||[]).map(row=>[row.id,row]));
+  const snapshotById=new Map((snapshotRows||[]).map(row=>[row.id,row]));
+  for(const row of remoteTheses||[]){
+    if(records.has(row.id))continue;
+    records.set(row.id,{id:row.id,title:row.title,view:row.thesis_text,assetId:row.primary_asset_id,assetSymbol:row.primary_asset_symbol,createdAt:row.created_at,reviewAt:row.review_at,updatedAt:row.updated_at,status:row.status,baselineSnapshotId:row.baseline_snapshot_id,baselineSnapshot:null,condition:"",conditionId:null,evidence:[],reviews:[]});
+  }
+  for(const thesis of records.values()){
+    const remote=remoteById.get(thesis.id);
+    const baseline=remote?.baseline_snapshot_id?snapshotById.get(remote.baseline_snapshot_id):null;
+    const localBaselineId=thesis.baselineSnapshotId||null;
+    const localBaseline=thesis.baselineSnapshot||null;
+    if(remote?.baseline_snapshot_id&&localBaselineId&&String(remote.baseline_snapshot_id)!==String(localBaselineId)&&localBaseline){thesis.additionalBaselines||=[];if(!thesis.additionalBaselines.some(item=>item.id===localBaselineId))thesis.additionalBaselines.push({id:localBaselineId,baselineSnapshot:localBaseline});}
+    if(remote?.baseline_snapshot_id){thesis.baselineSnapshotId=remote.baseline_snapshot_id;if(baseline?.source_payload?.baseline)thesis.baselineSnapshot=baseline.source_payload.baseline;else if(String(remote.baseline_snapshot_id)!==String(localBaselineId))thesis.baselineSnapshot=null;}else thesis.baselineSnapshotId||=null;
+    thesis.additionalBaselines ||= [];
+    for(const snapshot of snapshotRows||[]){if(snapshot.thesis_id!==thesis.id||snapshot.snapshot_kind!=="baseline"||snapshot.id===thesis.baselineSnapshotId)continue;const baselineSnapshot=snapshot.source_payload?.baseline||null;if(!baselineSnapshot||thesis.additionalBaselines.some(item=>item.id===snapshot.id))continue;thesis.additionalBaselines.push({id:snapshot.id,baselineSnapshot});}
+    if(!thesis.updatedAt&&remote?.updated_at)thesis.updatedAt=remote.updated_at;
+    const evidence=[...(thesis.evidence||[])];
+    const evidenceIds=new Set(evidence.map(item=>item.id).filter(Boolean));
+    for(const row of evidenceRows||[]){
+      if(row.thesis_id!==thesis.id||evidenceIds.has(row.id)||(thesis.baselineSnapshotId&&row.snapshot_id!==thesis.baselineSnapshotId))continue;
+      const sourceSnapshot=snapshotById.get(row.snapshot_id);
+      evidence.push({id:row.id,label:row.label||"Evidence",value:row.value_text||"",detail:row.detail||"",source:sourceSnapshot?.source_provider==="coinmarketcap"?"CoinMarketCap":"Synced evidence",sourceTimestamp:row.source_timestamp||null,sourceUrl:row.source_url||null,kind:row.kind||"metric",unit:row.unit||null,direction:row.direction||"neutral"});
+      evidenceIds.add(row.id);
+    }
+    thesis.evidence=evidence;
+    const reviews=[...(thesis.reviews||[])];
+    const reviewIds=new Set(reviews.map(item=>item.id).filter(Boolean));
+    for(const row of reviewRows||[]){
+      if(row.thesis_id!==thesis.id||reviewIds.has(row.id))continue;
+      const snapshot=snapshotById.get(row.snapshot_id);
+      reviews.push({id:row.id,date:row.reviewed_at,result:row.result_label,note:row.summary||"",snapshotId:row.snapshot_id,snapshot:snapshot?.source_payload?.review||null});
+      reviewIds.add(row.id);
+    }
+    reviews.sort((a,b)=>new Date(a.date||0)-new Date(b.date||0));
+    thesis.reviews=reviews;
+    const latestReview=reviews.reduce((latest,review)=>!latest||new Date(review.date||0)>new Date(latest)?review.date:latest,null);
+    if(latestReview){thesis.lastReviewedAt=latestReview;if(thesis.status!=="reviewed")thesis.status="reviewed";}
+    const condition=(conditionRows||[]).filter(row=>row.thesis_id===thesis.id).reduce((latest,row)=>!latest||Date.parse(row.updated_at||row.created_at||"")>Date.parse(latest.updated_at||latest.created_at||"")?row:latest,null);if(condition){thesis.condition=condition.active?(condition.description||""):"";thesis.conditionId=condition.id;thesis.conditionActive=condition.active===true;}
+  }
+  return [...records.values()].sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));
+}
 async function syncWorkspace(){
   const auth=state.auth;
   if(!auth.user?.id||!auth.session?.access_token)return;
@@ -655,27 +730,52 @@ async function syncWorkspace(){
   const assertCurrent=()=>{if(auth.syncJob!==job||auth.syncEpoch!==epoch||auth.user?.id!==owner||job.controller.signal.aborted)throw new DOMException("Workspace sync was superseded.","AbortError");};
   const request=(path,options={})=>{assertCurrent();return sbRequest(path,{...options,token,signal:job.controller.signal});};
   const insertOnly="resolution=ignore-duplicates,return=minimal";
+  const fetchAllRows=async path=>{const all=[];let cursor=null;for(;;){const after=cursor?`&id=gt.${encodeURIComponent(cursor)}`:"";const page=await request(`${path}${after}&order=id.asc&limit=500`);if(Array.isArray(page))all.push(...page);if(!Array.isArray(page)||page.length<500)break;const next=page[page.length-1]?.id;if(!next||next===cursor)break;cursor=next;}return all;};
   try{
+    const remoteAtStart=await fetchAllRows(`/rest/v1/theses?select=*&owner_id=eq.${encodeURIComponent(owner)}`);
+    const remoteAtStartById=new Map((remoteAtStart||[]).map(row=>[row.id,row]));
+    const remoteConditionRows=[];
+    for(let offset=0;offset<remoteAtStart.length;offset+=50){const ids=remoteAtStart.slice(offset,offset+50).map(row=>row.id).filter(Boolean).join(",");if(ids)remoteConditionRows.push(...await fetchAllRows(`/rest/v1/thesis_conditions?select=*&owner_id=eq.${encodeURIComponent(owner)}&thesis_id=in.(${ids})`));}
+    const conditionByThesis=new Map();
+    for(const row of remoteConditionRows){const current=conditionByThesis.get(row.thesis_id);if(!current||Date.parse(row.updated_at||row.created_at||"")>Date.parse(current.updated_at||current.created_at||""))conditionByThesis.set(row.thesis_id,row);}
     for(const t of theses){
+      const syncChoice=resolveThesisSyncConflict(t,remoteAtStartById.get(t.id));
+      const remoteCondition=conditionByThesis.get(t.id);
+      const conditionChoice=reconcileConditionForSync(t,remoteCondition);
       t.baselineSnapshotId ||= crypto.randomUUID();
-      const thesis={id:t.id,owner_id:owner,title:t.title,question:"",thesis_text:t.view||"",status:t.status==="reviewed"?"reviewed":"open",horizon_start:t.createdAt,review_at:t.reviewAt||null,primary_asset_id:t.assetId||null,primary_asset_symbol:t.assetSymbol||null,privacy:"private",created_at:t.createdAt,updated_at:t.createdAt};
-      await request("/rest/v1/theses?on_conflict=id",{method:"POST",body:thesis,prefer:"resolution=merge-duplicates,return=minimal"});
+      const thesis={id:t.id,owner_id:owner,title:t.title,question:"",thesis_text:t.view||"",status:["reviewed","due","archived"].includes(t.status)?t.status:"open",horizon_start:t.createdAt,review_at:t.reviewAt||null,primary_asset_id:t.assetId||null,primary_asset_symbol:t.assetSymbol||null,privacy:"private",created_at:t.createdAt,updated_at:t.updatedAt||t.lastReviewedAt||t.createdAt};
+      if(syncChoice!=="remote")await request("/rest/v1/theses?on_conflict=id",{method:"POST",body:thesis,prefer:"resolution=merge-duplicates,return=minimal"});
       const source=t.evidence?.[0]?.source||"Demo dataset";
       const snapshot={id:t.baselineSnapshotId,owner_id:owner,thesis_id:t.id,snapshot_kind:"baseline",source_provider:t.baselineSnapshot?.sourceProvider||(source==="CoinMarketCap"?"coinmarketcap":"demo"),source_endpoint:t.baselineSnapshot?.sourceEndpoint??(source==="CoinMarketCap"?"/v3/cryptocurrency/quotes/latest":null),source_observed_at:t.baselineSnapshot?.sourceObservedAt??null,captured_at:t.baselineSnapshot?.capturedAt||t.createdAt,source_payload:{evidence:t.evidence||[],baseline:t.baselineSnapshot||null},derived_metrics:{assetSymbol:t.assetSymbol||null,peerContext:t.evidence?.find(x=>x.label==="Research context")?.value||null},coverage:source==="CoinMarketCap"?"complete":"partial",limitations:source==="CoinMarketCap"?"User-authored interpretation; source data is a compacted application snapshot.":"Illustrative demo values, not live market evidence."};
       await request("/rest/v1/thesis_snapshots?on_conflict=id",{method:"POST",body:snapshot,prefer:insertOnly});
-      await request(`/rest/v1/theses?id=eq.${encodeURIComponent(t.id)}`,{method:"PATCH",body:{baseline_snapshot_id:t.baselineSnapshotId},prefer:"return=minimal"});
+      if(!remoteAtStartById.get(t.id)?.baseline_snapshot_id)await request(`/rest/v1/theses?id=eq.${encodeURIComponent(t.id)}`,{method:"PATCH",body:{baseline_snapshot_id:t.baselineSnapshotId},prefer:"return=minimal"});
       const evidence=(t.evidence||[]).map(item=>{item.id ||= crypto.randomUUID();return {id:item.id,owner_id:owner,thesis_id:t.id,snapshot_id:t.baselineSnapshotId,kind:item.kind||"metric",label:item.label,detail:item.detail||"",source_url:item.sourceUrl||null,source_timestamp:item.sourceTimestamp??null,value_text:item.value||null,unit:item.unit||null,direction:item.direction||"neutral"};});
       if(evidence.length)await request("/rest/v1/evidence_items?on_conflict=id",{method:"POST",body:evidence,prefer:insertOnly});
-      if(t.condition){t.conditionId ||= crypto.randomUUID();await request("/rest/v1/thesis_conditions?on_conflict=id",{method:"POST",body:{id:t.conditionId,owner_id:owner,thesis_id:t.id,condition_type:"qualitative",metric_key:"user_defined",effect:"weaken",description:t.condition,active:true},prefer:"resolution=merge-duplicates,return=minimal"});}
+      if(conditionChoice==="local"&&(t.condition||remoteCondition)){const body={description:t.condition||"",active:t.conditionActive===undefined?!!t.condition:!!t.conditionActive,updated_at:new Date().toISOString()};if(remoteCondition)await request(`/rest/v1/thesis_conditions?id=eq.${encodeURIComponent(remoteCondition.id)}&owner_id=eq.${encodeURIComponent(owner)}`,{method:"PATCH",body,prefer:"return=minimal"});else if(t.condition){t.conditionId ||= crypto.randomUUID();await request("/rest/v1/thesis_conditions?on_conflict=id",{method:"POST",body:{id:t.conditionId,owner_id:owner,thesis_id:t.id,condition_type:"qualitative",metric_key:"user_defined",effect:"weaken",...body},prefer:"resolution=merge-duplicates,return=minimal"});}}
       for(const review of t.reviews||[]){review.id ||= crypto.randomUUID();review.snapshotId ||= crypto.randomUUID();await request("/rest/v1/thesis_snapshots?on_conflict=id",{method:"POST",body:{id:review.snapshotId,owner_id:owner,thesis_id:t.id,snapshot_kind:"manual_review",source_provider:review.snapshot?.sourceProvider||"unavailable",source_endpoint:review.snapshot?.sourceEndpoint||null,source_observed_at:review.snapshot?.sourceObservedAt??null,captured_at:review.snapshot?.capturedAt||review.date,source_payload:{assetSymbol:t.assetSymbol||null,retrievedAt:review.snapshot?.retrievedAt??null,review:review.snapshot||null},derived_metrics:review.snapshot?.derivedMetrics||{},coverage:review.snapshot?.coverage||"unavailable",limitations:review.snapshot?.limitations||"No fresh source snapshot was captured at review time."},prefer:insertOnly});await request("/rest/v1/thesis_reviews?on_conflict=id",{method:"POST",body:{id:review.id,owner_id:owner,thesis_id:t.id,snapshot_id:review.snapshotId,reviewed_at:review.date,result_label:review.result,summary:review.note||""},prefer:insertOnly});}
     }
-    {const remote=await request(`/rest/v1/theses?select=*&owner_id=eq.${encodeURIComponent(owner)}&order=created_at.desc`);const missing=(remote||[]).filter(row=>!theses.some(t=>t.id===row.id));
-      if(missing.length){const missingIds=missing.map(t=>t.id).join(",");const [evidence,reviews,snapshots,conditions]=await Promise.all([request(`/rest/v1/evidence_items?select=*&owner_id=eq.${encodeURIComponent(owner)}&thesis_id=in.(${missingIds})`),request(`/rest/v1/thesis_reviews?select=*&owner_id=eq.${encodeURIComponent(owner)}&thesis_id=in.(${missingIds})`),request(`/rest/v1/thesis_snapshots?select=*&owner_id=eq.${encodeURIComponent(owner)}&thesis_id=in.(${missingIds})&order=captured_at.asc`),request(`/rest/v1/thesis_conditions?select=*&owner_id=eq.${encodeURIComponent(owner)}&thesis_id=in.(${missingIds})&active=eq.true`)]);for(const row of missing){const thesisSnapshots=(snapshots||[]).filter(x=>x.thesis_id===row.id);const baseline=thesisSnapshots.find(x=>x.id===row.baseline_snapshot_id)||null;const rowConditions=(conditions||[]).filter(x=>x.thesis_id===row.id);theses.push({id:row.id,title:row.title,view:row.thesis_text,assetId:row.primary_asset_id,assetSymbol:row.primary_asset_symbol,createdAt:row.created_at,reviewAt:row.review_at,status:row.status,baselineSnapshotId:row.baseline_snapshot_id,baselineSnapshot:baseline?.source_payload?.baseline||null,condition:rowConditions[0]?.description||"",conditionId:rowConditions[0]?.id||null,evidence:(evidence||[]).filter(x=>x.thesis_id===row.id&&(!row.baseline_snapshot_id||x.snapshot_id===row.baseline_snapshot_id)).map(x=>({id:x.id,label:x.label,value:x.value_text||"",detail:x.detail,source:baseline?.source_provider==="coinmarketcap"?"CoinMarketCap":"Synced evidence",sourceTimestamp:x.source_timestamp,sourceUrl:x.source_url})),reviews:(reviews||[]).filter(x=>x.thesis_id===row.id).map(x=>({id:x.id,date:x.reviewed_at,result:x.result_label,note:x.summary,snapshotId:x.snapshot_id,snapshot:thesisSnapshots.find(s=>s.id===x.snapshot_id)?.source_payload?.review||null}))});}}
+    const remote=await fetchAllRows(`/rest/v1/theses?select=*&owner_id=eq.${encodeURIComponent(owner)}&order=created_at.desc,id.desc`);
+    const history={evidence:[],reviews:[],snapshots:[],conditions:[]};
+    const remoteRows=remote||[];
+    for(let offset=0;offset<remoteRows.length;offset+=50){
+      const group=remoteRows.slice(offset,offset+50);
+      const ids=group.map(row=>row.id).filter(Boolean).join(",");
+      if(!ids)continue;
+      const filter=`/rest/v1/evidence_items?select=*&owner_id=eq.${encodeURIComponent(owner)}&thesis_id=in.(${ids})`;
+      const [evidence,reviews,snapshots,conditions]=await Promise.all([
+        fetchAllRows(filter),
+        fetchAllRows(`/rest/v1/thesis_reviews?select=*&owner_id=eq.${encodeURIComponent(owner)}&thesis_id=in.(${ids})`),
+        fetchAllRows(`/rest/v1/thesis_snapshots?select=*&owner_id=eq.${encodeURIComponent(owner)}&thesis_id=in.(${ids})`),
+        fetchAllRows(`/rest/v1/thesis_conditions?select=*&owner_id=eq.${encodeURIComponent(owner)}&thesis_id=in.(${ids})&active=eq.true`)
+      ]);
+      history.evidence.push(...(evidence||[]));history.reviews.push(...(reviews||[]));history.snapshots.push(...(snapshots||[]));history.conditions.push(...(conditions||[]));
     }
+    const reconciled=reconcileThesisHistory(theses,remoteRows,history.evidence,history.reviews,history.snapshots,history.conditions);
+    theses.splice(0,theses.length,...reconciled);
     assertCurrent();
     const latestById=new Map(theses.map(t=>[t.id,t]));for(const current of state.theses)latestById.set(current.id,current);const finalTheses=[...latestById.values()];
     localStorage.setItem("cmc-lens-theses:"+owner,JSON.stringify(finalTheses));
-    state.theses=finalTheses;renderThesisCards();updateStorageStatus("Synced to your private Supabase workspace.");
+    state.theses=finalTheses;renderThesisCards();updateStorageStatus("Synced to Supabase · remote review history reconciled.");
   }finally{
     if(auth.syncJob===job){auth.syncJob=null;auth.syncing=false;if(auth.syncRequested){auth.syncRequested=false;syncWorkspace().catch(()=>updateStorageStatus("Saved locally · cloud sync will retry"));}}
   }
