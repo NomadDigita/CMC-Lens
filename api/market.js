@@ -1,10 +1,18 @@
 const demo = require("../data/demo");
+const { randomUUID } = require("crypto");
 
 const CMC_ORIGIN = "https://pro-api.coinmarketcap.com";
 const SERVER_CACHE = new Map();
 const CACHE_MS = 60_000;
 
 function reply(res, status, body, headers = {}) {
+  if (Array.isArray(body?.sourceReceipts)) {
+    const servedAt = new Date().toISOString();
+    body = { ...body, sourceReceipts: body.sourceReceipts.map(receipt => ({
+      ...receipt,
+      appCache: { ...receipt.appCache, servedAt }
+    })) };
+  }
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.setHeader("Cache-Control", status < 400 ? "s-maxage=60, stale-while-revalidate=300" : "no-store");
   Object.entries(headers).forEach(([key, value]) => res.setHeader(key, value));
@@ -22,27 +30,72 @@ function setCached(key, value) {
   SERVER_CACHE.set(key, { at: Date.now(), value });
 }
 
-async function cmc(path, params, timeoutMs = 9000) {
-  const url = new URL(`${CMC_ORIGIN}${path}`);
-  Object.entries(params).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && value !== "") url.searchParams.set(key, String(value));
-  });
-  const response = await fetch(url, {
-    headers: { "X-CMC_PRO_API_KEY": process.env.CMC_PRO_API_KEY, Accept: "application/json" },
-    signal: AbortSignal.timeout(timeoutMs)
-  });
-  const payload = await response.json();
-  const cmcCode = Number(payload?.status?.error_code ?? 0);
-  if (!response.ok || (Number.isFinite(cmcCode) && cmcCode !== 0)) {
-    const error = new Error("CoinMarketCap request failed");
-    error.status = response.status;
-    error.cmcCode = Number.isFinite(cmcCode) && cmcCode !== 0 ? cmcCode : undefined;
-    error.cmcMessage = payload?.status?.error_message;
-    throw error;
-  }
-  return payload.data;
+function safeReceiptParams(params={}){
+  const allowed=new Set(["convert","start","limit","sort","sort_dir","aux","id","listing_status","time_start","time_end","interval","count"]);
+  return Object.fromEntries(Object.entries(params).filter(([key,value])=>allowed.has(key)&&value!==undefined&&value!==null&&value!=="").map(([key,value])=>[key,String(value).slice(0,120)]));
 }
 
+function receiptRows(data){
+  if(Array.isArray(data))return data;
+  if(data&&typeof data==="object")return Object.values(data);
+  return [];
+}
+
+function sourceObservedAt(path,data){
+  if(path==="/v1/global-metrics/quotes/latest")return data?.last_updated||null;
+  if(path==="/v3/fear-and-greed/latest"){const row=Array.isArray(data)?data[0]:data;return row?.update_time||row?.timestamp||row?.last_updated||null;}
+  if(path==="/v3/cryptocurrency/quotes/historical"){const rows=receiptRows(data);const quotes=rows.flatMap(row=>row?.quotes||[]);return quotes.at(-1)?.timestamp||null;}
+  const rows=receiptRows(data);const first=rows[0];
+  return quoteFor(first)?.last_updated||first?.last_updated||null;
+}
+
+function responseSummary(path,data){
+  const rows=receiptRows(data);
+  if(path==="/v1/global-metrics/quotes/latest")return {totalMarketCap:finiteMetric(data?.quote?.USD?.total_market_cap),btcDominance:finiteMetric(data?.btc_dominance)};
+  if(path==="/v3/fear-and-greed/latest"){const row=Array.isArray(data)?data[0]:data;return {value:finiteMetric(row?.value??row?.fear_and_greed_index),classification:row?.value_classification||row?.classification||null};}
+  if(path==="/v3/cryptocurrency/quotes/historical"){const points=rows.flatMap(row=>row?.quotes||[]);return {points:points.length,firstTimestamp:points[0]?.timestamp||null,lastTimestamp:points.at(-1)?.timestamp||null};}
+  if(path==="/v3/cryptocurrency/quotes/latest")return {matchedAssets:rows.length,assets:rows.slice(0,5).map(row=>({id:String(row.id||""),symbol:row.symbol||"",price:finiteMetric(quoteFor(row).price),change24h:finiteMetric(quoteFor(row).percent_change_24h)}))};
+  if(path==="/v3/cryptocurrency/listings/latest")return {returnedAssets:rows.length,assets:rows.slice(0,5).map(row=>({id:String(row.id||""),symbol:row.symbol||""}))};
+  if(path==="/v1/cryptocurrency/map")return {matchedAssets:rows.length,assets:rows.slice(0,5).map(row=>({id:String(row.id||""),symbol:row.symbol||""}))};
+  return {returnedRecords:rows.length};
+}
+
+function makeSourceReceipt(path,params,{upstreamStatus=null,data=null,error=null}={}){
+  const servedAt=new Date().toISOString();
+  const cmcCode=Number(error?.cmcCode||0)||null;
+  return {requestId:randomUUID(),provider:"CoinMarketCap",method:"GET",endpoint:path,params:safeReceiptParams(params),outcome:error?(upstreamStatus>=500||error.name==="TimeoutError"||error.name==="AbortError"?"unavailable":"error"):"success",upstreamStatus,errorCode:error?(cmcCode?`CMC_${cmcCode}`:upstreamStatus?`HTTP_${upstreamStatus}`:error.name==="TimeoutError"?"TIMEOUT":"NETWORK_ERROR"):null,appCache:{status:"miss",servedAt,sourceRetrievedAt:servedAt},sourceObservedAt:error?null:sourceObservedAt(path,data),recordCount:error?null:(path==="/v3/cryptocurrency/quotes/historical"?responseSummary(path,data).points:receiptRows(data).length),responseSummary:error?{}:responseSummary(path,data)};
+}
+
+function cachedSourceReceipts(receipts=[]){
+  const servedAt=new Date().toISOString();
+  return receipts.map(receipt=>({...receipt,appCache:{...receipt.appCache,status:"hit",servedAt,sourceRetrievedAt:receipt.appCache?.sourceRetrievedAt||receipt.appCache?.servedAt||null}}));
+}
+
+async function cmc(path, params, timeoutMs = 9000, receiptSink = []) {
+  const safeParams=safeReceiptParams(params);
+  const url = new URL(`${CMC_ORIGIN}${path}`);
+  Object.entries(safeParams).forEach(([key, value]) => url.searchParams.set(key, value));
+  let upstreamStatus=null;
+  try{
+    const response = await fetch(url, {headers: { "X-CMC_PRO_API_KEY": process.env.CMC_PRO_API_KEY, Accept: "application/json" },signal: AbortSignal.timeout(timeoutMs)});
+    upstreamStatus=response.status;
+    const payload = await response.json();
+    const cmcCode = Number(payload?.status?.error_code ?? 0);
+    if (!response.ok || (Number.isFinite(cmcCode) && cmcCode !== 0)) {
+      const error = new Error("CoinMarketCap request failed");
+      error.status = response.status;
+      error.cmcCode = Number.isFinite(cmcCode) && cmcCode !== 0 ? cmcCode : undefined;
+      error.cmcMessage = payload?.status?.error_message;
+      throw error;
+    }
+    const data=payload.data;
+    receiptSink.push(makeSourceReceipt(path,safeParams,{upstreamStatus,data}));
+    return data;
+  }catch(error){
+    receiptSink.push(makeSourceReceipt(path,safeParams,{upstreamStatus:upstreamStatus||error.status||null,error}));
+    throw error;
+  }
+}
 function quoteFor(item) {
   if (Array.isArray(item?.quote)) return item.quote.find(q => q.symbol === "USD") || item.quote[0] || {};
   return item?.quote?.USD || {};
@@ -113,27 +166,40 @@ function fearGreedCacheValue() {
   return entry.value;
 }
 
-async function optionalFearGreed() {
-  const cached = fearGreedCacheValue();
-  if (cached !== undefined) return cached;
+async function optionalFearGreed(receiptSink=[]) {
+  const entry = SERVER_CACHE.get("fear-greed");
+  if (entry && Date.now() - entry.at <= entry.expiresAfter) {
+    if (entry.receipt) receiptSink.push(...cachedSourceReceipts([entry.receipt]));
+    return entry.value;
+  }
+  if (entry) SERVER_CACHE.delete("fear-greed");
   const pending = SERVER_CACHE.get("fear-greed-inflight")?.value;
-  if (pending) return pending;
+  if (pending) {
+    const shared = await pending;
+    if (shared.receipt) receiptSink.push(...cachedSourceReceipts([shared.receipt]));
+    return shared.value;
+  }
   const request = (async () => {
+    const receipts=[];
     try {
-      const data = await cmc("/v3/fear-and-greed/latest", {}, 1800);
+      const data = await cmc("/v3/fear-and-greed/latest", {}, 1800, receipts);
       const record = readFearGreedRecord(data);
       if (!record) throw new Error("Fear & Greed response contained no usable value");
-      SERVER_CACHE.set("fear-greed", { at: Date.now(), value: record, expiresAfter: FEAR_GREED_SUCCESS_MS });
-      return record;
+      const receipt=receipts[0]||null;
+      SERVER_CACHE.set("fear-greed", { at: Date.now(), value: record, receipt, expiresAfter: FEAR_GREED_SUCCESS_MS });
+      return {value:record,receipt};
     } catch {
-      SERVER_CACHE.set("fear-greed", { at: Date.now(), value: null, expiresAfter: FEAR_GREED_FAILURE_MS });
-      return null;
+      const receipt=receipts[0]||null;
+      SERVER_CACHE.set("fear-greed", { at: Date.now(), value: null, receipt, expiresAfter: FEAR_GREED_FAILURE_MS });
+      return {value:null,receipt};
     } finally {
       SERVER_CACHE.delete("fear-greed-inflight");
     }
   })();
   SERVER_CACHE.set("fear-greed-inflight", { at: Date.now(), value: request });
-  return request;
+  const result=await request;
+  if (result.receipt) receiptSink.push(result.receipt);
+  return result.value;
 }
 
 function normalizeOverview(globalData, listings, sentiment = null) {
@@ -217,21 +283,28 @@ function normalizeOverview(globalData, listings, sentiment = null) {
   };
 }
 
-async function liveOverview() {
-  const key = getCached("overview-v1");
-  if (key) return key;
+async function liveOverview(receiptSink=[]) {
+  const cached = getCached("overview-v1");
+  if (cached) {
+    const receipts=cachedSourceReceipts(cached.sourceReceipts||[]);
+    receiptSink.push(...receipts);
+    return {...cached,sourceReceipts:receipts};
+  }
+  const sourceReceipts=[];
   const [globalData, listingData, sentiment] = await Promise.all([
-    cmc("/v1/global-metrics/quotes/latest", { convert: "USD" }),
-    cmc("/v3/cryptocurrency/listings/latest", { start: 1, limit: 100, convert: "USD", sort: "market_cap", sort_dir: "desc", aux: "tags" }),
-    optionalFearGreed().catch(() => null)
+    cmc("/v1/global-metrics/quotes/latest", { convert: "USD" }, 9000, sourceReceipts),
+    cmc("/v3/cryptocurrency/listings/latest", { start: 1, limit: 100, convert: "USD", sort: "market_cap", sort_dir: "desc", aux: "tags" }, 9000, sourceReceipts),
+    optionalFearGreed(sourceReceipts).catch(() => null)
   ]);
   const result = normalizeOverview(globalData, listingData, sentiment);
+  result.sourceReceipts=sourceReceipts;
+  receiptSink.push(...sourceReceipts);
   setCached("overview-v1", result);
   return result;
 }
 
-async function liveAsset(id) {
-  const result = await cmc("/v3/cryptocurrency/quotes/latest", { id, convert: "USD", aux: "tags" });
+async function liveAsset(id, receiptSink=[]) {
+  const result = await cmc("/v3/cryptocurrency/quotes/latest", { id, convert: "USD", aux: "tags" }, 9000, receiptSink);
   const item = Array.isArray(result) ? result.find(row => String(row.id) === String(id)) || result[0] : result?.[id] || Object.values(result || {})[0];
   if (!item) return null;
   const usd = quoteFor(item);
@@ -244,19 +317,25 @@ async function liveAsset(id) {
   };
 }
 
-async function liveSearch(query) {
+async function liveSearch(query, receiptSink=[]) {
   const q = query.toLowerCase();
   let rows = getCached("asset-map", 300_000);
   if (!rows) {
-    rows = await cmc("/v1/cryptocurrency/map", { listing_status: "active", limit: 5000, aux: "first_historical_data,last_historical_data" });
+    const mapReceipts=[];
+    rows = await cmc("/v1/cryptocurrency/map", { listing_status: "active", limit: 5000, aux: "first_historical_data,last_historical_data" }, 9000, mapReceipts);
     if (!Array.isArray(rows)) rows = [];
     setCached("asset-map", rows);
+    if (mapReceipts[0]) setCached("asset-map-receipt",mapReceipts[0]);
+    receiptSink.push(...mapReceipts);
+  } else {
+    const cachedReceipt=getCached("asset-map-receipt",300_000);
+    if(cachedReceipt)receiptSink.push(...cachedSourceReceipts([cachedReceipt]));
   }
   rows = rows.filter(row => String(row.name).toLowerCase().includes(q) || String(row.symbol).toLowerCase() === q || String(row.id) === q)
     .sort((a,b) => (String(a.symbol).toLowerCase() === q ? -1 : 0) - (String(b.symbol).toLowerCase() === q ? -1 : 0)).slice(0,8);
   if (!rows.length) return [];
   const ids = rows.map(row => row.id).filter(Number.isFinite);
-  const quotes = await cmc("/v3/cryptocurrency/quotes/latest", { id: ids.join(","), convert: "USD", aux: "tags" });
+  const quotes = await cmc("/v3/cryptocurrency/quotes/latest", { id: ids.join(","), convert: "USD", aux: "tags" }, 9000, receiptSink);
   const quoteRows = Array.isArray(quotes) ? quotes : Object.values(quotes || {});
   const byId = new Map(quoteRows.map(row => [String(row.id), row]));
   return rows.map(meta => {
@@ -267,7 +346,7 @@ async function liveSearch(query) {
   }).filter(Boolean);
 }
 
-async function liveHistory(id, period) {
+async function liveHistory(id, period, receiptSink=[]) {
   const days = ({ "7D": 7, "30D": 30, "90D": 90 })[period] || 7;
   const end = new Date();
   const start = new Date(end.getTime() - days * 24 * 60 * 60 * 1000);
@@ -278,7 +357,7 @@ async function liveHistory(id, period) {
     interval: "daily",
     count: days + 1,
     convert: "USD"
-  });
+  }, 9000, receiptSink);
   const asset = payload?.[id];
   const quotes = asset?.quotes || [];
   return quotes.map(point => ({
@@ -305,50 +384,51 @@ module.exports = async function handler(req, res) {
   const view = String(req.query.view || "overview");
   const apiKey = process.env.CMC_PRO_API_KEY;
   if (!apiKey) {
-    const demoResponse = { ...demo, mode: "demo", source: { provider: "Demo dataset", observedAt: null, attribution: "Demo values only" } };
+    const demoResponse = { ...demo, mode: "demo", source: { provider: "Demo dataset", observedAt: null, attribution: "Demo values only" }, sourceReceipts: [] };
     if (view === "asset") {
       const sample = demoResponse.assets.find(item => String(item.id) === String(req.query.id) || item.symbol.toLowerCase() === String(req.query.id || "").toLowerCase());
-      return sample ? reply(res, 200, { mode: "demo", retrievedAt: demoResponse.retrievedAt, asset: sample }) : reply(res, 404, { error: "ASSET_NOT_FOUND" });
+      return sample ? reply(res, 200, { mode: "demo", retrievedAt: demoResponse.retrievedAt, asset: sample, sourceReceipts: [] }) : reply(res, 404, { error: "ASSET_NOT_FOUND" });
     }
     if (view === "history") {
       const series = demoHistory(req.query.id, String(req.query.period || "7D"));
-      return series ? reply(res, 200, { mode: "demo", illustrative: true, series }) : reply(res, 404, { error: "ASSET_NOT_FOUND" });
+      return series ? reply(res, 200, { mode: "demo", illustrative: true, series, sourceReceipts: [] }) : reply(res, 404, { error: "ASSET_NOT_FOUND" });
     }
     if (view === "search") {
       const q = String(req.query.q || "").trim().toLowerCase();
-      return reply(res, 200, { mode: "demo", assets: demoResponse.assets.filter(item => item.name.toLowerCase().includes(q) || item.symbol.toLowerCase() === q || String(item.id) === q) });
+      return reply(res, 200, { mode: "demo", assets: demoResponse.assets.filter(item => item.name.toLowerCase().includes(q) || item.symbol.toLowerCase() === q || String(item.id) === q), sourceReceipts: [] });
     }
     return reply(res, 200, demoResponse);
   }
 
+  const sourceReceipts=[];
   try {
     if (view === "asset") {
       const id = String(req.query.id || "");
-      if (!/^\d{1,12}$/.test(id)) return reply(res, 400, { error: "INVALID_ASSET_ID" });
-      const asset = await liveAsset(id);
-      return asset ? reply(res, 200, { mode: "live", retrievedAt: new Date().toISOString(), source: { provider: "CoinMarketCap", observedAt: asset.observedAt, attribution: "Data provided by CoinMarketCap.com" }, asset }) : reply(res, 404, { error: "ASSET_NOT_FOUND" });
+      if (!/^\d{1,12}$/.test(id)) return reply(res, 400, { error: "INVALID_ASSET_ID", sourceReceipts });
+      const asset = await liveAsset(id, sourceReceipts);
+      return asset ? reply(res, 200, { mode: "live", retrievedAt: new Date().toISOString(), source: { provider: "CoinMarketCap", observedAt: asset.observedAt, attribution: "Data provided by CoinMarketCap.com" }, asset, sourceReceipts }) : reply(res, 404, { error: "ASSET_NOT_FOUND", sourceReceipts });
     }
     if (view === "history") {
       const id = String(req.query.id || "");
       const period = String(req.query.period || "7D");
-      if (!/^\d{1,12}$/.test(id) || !["7D", "30D", "90D"].includes(period)) return reply(res, 400, { error: "INVALID_HISTORY_QUERY" });
-      const series = await liveHistory(id, period);
-      return reply(res, 200, { mode: "live", retrievedAt: new Date().toISOString(), source: "CoinMarketCap historical quotes", series });
+      if (!/^\d{1,12}$/.test(id) || !["7D", "30D", "90D"].includes(period)) return reply(res, 400, { error: "INVALID_HISTORY_QUERY", sourceReceipts });
+      const series = await liveHistory(id, period, sourceReceipts);
+      return reply(res, 200, { mode: "live", retrievedAt: new Date().toISOString(), source: "CoinMarketCap historical quotes", series, sourceReceipts });
     }
     if (view === "search") {
       const q = String(req.query.q || "").trim();
-      if (!/^[a-zA-Z0-9][a-zA-Z0-9 .-]{1,39}$/.test(q)) return reply(res, 400, { error: "INVALID_QUERY" });
-      const assets = await liveSearch(q);
-      return reply(res, 200, { mode: "live", retrievedAt: new Date().toISOString(), assets });
+      if (!/^[a-zA-Z0-9][a-zA-Z0-9 .-]{1,39}$/.test(q)) return reply(res, 400, { error: "INVALID_QUERY", sourceReceipts });
+      const assets = await liveSearch(q, sourceReceipts);
+      return reply(res, 200, { mode: "live", retrievedAt: new Date().toISOString(), assets, sourceReceipts });
     }
-    if (view !== "overview") return reply(res, 400, { error: "INVALID_VIEW" });
-    return reply(res, 200, await liveOverview());
+    if (view !== "overview") return reply(res, 400, { error: "INVALID_VIEW", sourceReceipts });
+    return reply(res, 200, await liveOverview(sourceReceipts));
   } catch (error) {
     const upstreamStatus = Number(error.status || 0);
     const cmcCode = Number(error.cmcCode || 0) || null;
-    if (upstreamStatus === 429 || [1008, 1009, 1010, 1011].includes(cmcCode)) return reply(res, 429, { error: "CMC_RATE_LIMITED", retryable: true, cmcCode });
-    if ([1001, 1002, 1003, 1004, 1005, 1006, 1007].includes(cmcCode) || [401, 402, 403].includes(upstreamStatus)) return reply(res, 503, { error: "CMC_ENTITLEMENT_OR_KEY", retryable: false, upstreamStatus: upstreamStatus || null, cmcCode });
-    if (upstreamStatus >= 500 || error.name === "TimeoutError" || error.name === "AbortError") return reply(res, 502, { error: "CMC_UPSTREAM_UNAVAILABLE", retryable: true, upstreamStatus: upstreamStatus || null });
-    return reply(res, 502, { error: "CMC_UPSTREAM_ERROR", retryable: false, upstreamStatus: upstreamStatus || null, cmcCode });
+    if (upstreamStatus === 429 || [1008, 1009, 1010, 1011].includes(cmcCode)) return reply(res, 429, { error: "CMC_RATE_LIMITED", retryable: true, cmcCode, sourceReceipts });
+    if ([1001, 1002, 1003, 1004, 1005, 1006, 1007].includes(cmcCode) || [401, 402, 403].includes(upstreamStatus)) return reply(res, 503, { error: "CMC_ENTITLEMENT_OR_KEY", retryable: false, upstreamStatus: upstreamStatus || null, cmcCode, sourceReceipts });
+    if (upstreamStatus >= 500 || error.name === "TimeoutError" || error.name === "AbortError") return reply(res, 502, { error: "CMC_UPSTREAM_UNAVAILABLE", retryable: true, upstreamStatus: upstreamStatus || null, sourceReceipts });
+    return reply(res, 502, { error: "CMC_UPSTREAM_ERROR", retryable: false, upstreamStatus: upstreamStatus || null, cmcCode, sourceReceipts });
   }
 };
