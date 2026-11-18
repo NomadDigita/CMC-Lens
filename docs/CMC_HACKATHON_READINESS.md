@@ -7,7 +7,7 @@
 **Submission window:** 18 November–9 December 2026, 23:59 UTC  
 **Project:** CMC Lens — a market research workspace that makes asset comparisons reviewable over time.
 
-CMC Lens is a pre-existing codebase only if its CMC integration and this hackathon-specific work are clearly identified. This round's new work is the comparison evidence replay: preserve the original quotes for selected CMC assets, retrieve the same CMC IDs on a later thesis review, and show each return plus its relative difference from the primary asset. The original snapshot stays immutable; missing quotes remain missing.
+CMC Lens is a pre-existing codebase only if its CMC integration and this hackathon-specific work are clearly identified. This round's new work is the comparison evidence replay: preserve the original quotes for selected CMC assets, retrieve the same CMC IDs on a later thesis review, and show each return plus its relative difference from the primary asset. The matched-window view requests the same saved baseline and review timestamps for every CMC ID, indexes returned daily quotes to 100 at each frozen baseline, and makes missing intervals visible. The original snapshot stays immutable; missing quotes remain missing.
 
 ## What a participant must submit
 
