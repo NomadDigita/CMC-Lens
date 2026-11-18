@@ -28,9 +28,10 @@ Deno.serve(async (req: Request) => {
     return json({ error: "INVALID_REQUEST" }, 400);
   }
   const credits = Number(body?.credits);
-  if (!Number.isInteger(credits) || credits < 1 || credits > 30) {
+  if (!Number.isInteger(credits) || credits < 0 || credits > 30) {
     return json({ error: "INVALID_CREDIT_ESTIMATE" }, 400);
   }
+  if (credits === 0) return json({ allowed: true, retryAfterSeconds: 0, remainingCredits: 0 });
 
   const rpcResponse = await fetch(`${supabaseUrl}/rest/v1/rpc/reserve_cmc_history_budget`, {
     method: "POST",
