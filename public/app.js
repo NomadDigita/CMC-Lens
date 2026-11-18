@@ -395,10 +395,14 @@ function updateStorageStatus(message) {
 
 function chooseGuestImport(count,email) {
   return new Promise(resolve=>{
+    let settled=false;
+    const finish=choice=>{if(settled)return;settled=true;closeModal();resolve(choice);};
     openModal(`<div class="modal-head"><div><div class="panel-kicker">PRIVATE WORKSPACE SETUP</div><h2 id="modal-title">Bring over local research?</h2><p>${escapeHtml(email||"This account")} has a private cloud workspace. This browser has ${count} guest record${count===1?"":"s"}.</p></div><button id="modal-close" class="modal-close" aria-label="Close">×</button></div><div class="detail-content"><div class="detail-note">Importing sends these records and their notes to this signed-in Supabase workspace. Choose Keep local to leave them in this browser without uploading them.</div><div class="guest-import-actions"><button class="quiet-button" id="guest-keep-local">Keep local only</button><button class="primary-button" id="guest-import">Import ${count} record${count===1?"":"s"}</button></div></div>`);
-    document.getElementById("guest-import").addEventListener("click",()=>{closeModal();resolve(true);});
-    document.getElementById("guest-keep-local").addEventListener("click",()=>{closeModal();resolve(false);});
-    document.getElementById("modal-close").addEventListener("click",()=>{closeModal();resolve(false);});
+    document.getElementById("guest-import").addEventListener("click",()=>finish(true));
+    document.getElementById("guest-keep-local").addEventListener("click",()=>finish(false));
+    document.getElementById("modal-close").addEventListener("click",()=>finish(false));
+    document.getElementById("modal-backdrop").addEventListener("click",e=>{if(e.target.id==="modal-backdrop")finish(false);});
+    document.addEventListener("keydown",e=>{if(e.key==="Escape")finish(false);});
   });
 }
 
