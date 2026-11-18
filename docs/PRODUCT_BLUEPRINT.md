@@ -377,11 +377,19 @@ CMC attribution will read **“Data provided by CoinMarketCap.com”** and link 
 
 ## 15. Current known state
 
-- Repository `NomadDigita/CMC-Lens` was created empty and has no prior app or design system.
-- The linked CMC API account is to be used only through server-side requests.
-- The connected Supabase organization currently visible is `MigrateOS`; the existing `Tidelight` project is a separate production system and must not be reused for CMC Lens.
-- The first connected Vercel account contains the Tidelight team. CMC Lens will be added as a separate project under that user-selected first account.
-- No CMC Lens API key is committed or configured in this repository at this point.
+**Checked: November 18, 2026**
+
+- Repository: `NomadDigita/CMC-Lens`; the product is deployed at [https://cmc-lens.vercel.app](https://cmc-lens.vercel.app).
+- Hosting: a dedicated Vercel project named `cmc-lens` is linked to this repository. The production deployment receives changes from `main`.
+- Database and identity: a separate Supabase project was created in the MigrateOS organization. The existing Tidelight project is not reused. Private research tables use row-level security.
+- CMC credentials: `CMC_PRO_API_KEY` is configured server-side in Vercel Production and is not stored in source control or sent to the browser.
+- Current sign-in: Supabase email one-time-code and magic-link sign-in. Google OAuth is not configured.
+- Market Pulse uses live CMC global metrics and a top-100 listing when the production API is available; otherwise the interface switches to a clearly labeled eight-asset illustrative demo sample. The live overview and asset search carry per-asset quote timestamps. Breadth states its advancing count and denominator.
+- Explore searches CoinMarketCap's active asset map and requests current quotes. Compare lets users search loaded or remote assets, select up to four, and requests matched historical quote series for 7D, 30D, or 90D.
+- Thesis records preserve a baseline, source timestamp, evidence items, user-defined conditions, and append-only reviews. Reviews compare the original baseline with the latest quote when CMC access is available. CMC Lens does not generate buy/sell instructions or a predictive score.
+- Signed-in thesis caches are scoped by Supabase user ID. On first connection, a user can explicitly import guest drafts into their private workspace or keep them local. Signing out returns to guest drafts rather than another account's cache.
+- The interface supports dark and light themes. Sentiment remains unavailable in live mode until a source is integrated and verified; demo sentiment is labeled as illustrative.
+- Still planned: richer source citations and evidence collection, account-management and recovery UX, optional public/shareable research capsules with explicit privacy controls, and hackathon packaging/submission. Do not represent these items as implemented until shipped and verified.
 
 ## 16. Verified hackathon submission requirements
 
