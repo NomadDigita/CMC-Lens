@@ -470,16 +470,16 @@ async function loadCompareHistory() {
   normalizeCompareSelections();
   if(state.data.mode!=="live")return;
   const key=`${state.comparePeriod}:${state.compareSymbols.join(",")}`;
-  if(state.historicalCache[key]){renderCompare();return;}
+  if(state.historicalCache[key]){state.latestSourceReceipts=[...new Map(state.historicalCache[key].flatMap(row=>row.sourceReceipts||[]).map(receipt=>[receipt.requestId,receipt])).values()];renderCompare();return;}
   if(state.historyPending[key])return;
   state.historyPending[key]=true;
   renderCompare();
   const rows=await Promise.all(state.compareSymbols.map(async symbol=>{
     const asset=compareAssetBySelection(symbol);if(!asset)return {symbol,series:[]};
-    try{const r=await fetch(`/api/market?view=history&id=${encodeURIComponent(asset.id)}&period=${state.comparePeriod}`,{headers:{Accept:"application/json"}});if(!r.ok)return {symbol,series:[]};const body=await r.json();return {symbol,series:Array.isArray(body.series)?body.series:[],retrievedAt:body.retrievedAt};}
+    try{const r=await fetch(`/api/market?view=history&id=${encodeURIComponent(asset.id)}&period=${state.comparePeriod}`,{headers:{Accept:"application/json"}});const body=await r.json().catch(()=>({}));return {symbol,series:r.ok&&Array.isArray(body.series)?body.series:[],retrievedAt:body.retrievedAt,sourceReceipts:Array.isArray(body.sourceReceipts)?body.sourceReceipts:[]};}
     catch{return {symbol,series:[]};}
   }));
-  state.historicalCache[key]=rows;delete state.historyPending[key];
+  state.historicalCache[key]=rows;delete state.historyPending[key];state.latestSourceReceipts=[...new Map(rows.flatMap(row=>row.sourceReceipts||[]).map(receipt=>[receipt.requestId,receipt])).values()];
   if(state.view==="compare"&&`${state.comparePeriod}:${state.compareSymbols.join(",")}`===key)renderCompare();
 }
 
