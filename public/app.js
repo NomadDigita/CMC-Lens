@@ -298,6 +298,9 @@ function windowUnavailableMessage(status){
   if(status==="window_too_wide")return "This saved baseline is outside the 366-day historical window supported here.";
   if(status==="plan_unavailable")return "This CMC plan did not return historical quotes. Point-in-time quote review is still available.";
   if(status==="rate_limited")return "CMC rate-limited the historical request. No points were estimated.";
+  if(status==="budget_exhausted")return "The shared historical replay budget is used for this hour. Try again after it resets.";
+  if(status==="budget_unavailable")return "The shared historical request budget is unavailable right now. No CMC request was made.";
+  if(status==="auth_required")return "Sign in to load matched CMC history. Your point-quote replay remains available.";
   if(status==="insufficient_assets")return "At least two valid saved CMC asset IDs are needed for a matched window.";
   if(status==="demo_mode")return "This environment is using demo data, so no CMC historical request was made.";
   if(status==="no_points")return "CMC returned no usable historical points for this saved window. No values were filled in.";
@@ -312,14 +315,16 @@ async function captureMatchedWindowReplay(comparison,items,endAt,receiptSink,com
   if(endMs-startMs>366*24*60*60*1000)return {status:"window_too_wide",startAt,endAt,interval:"24h",assets:[]};
   const ids=items.filter(item=>/^\d{1,12}$/.test(String(item.id))).map(item=>String(item.id));
   if(ids.length<2)return {status:"insufficient_assets",startAt,endAt,interval:"24h",assets:[]};
+  const token=state.auth.session?.access_token;
+  if(!token)return {status:"auth_required",startAt,endAt,interval:"24h",assets:[]};
   let response,body;
   try{
-    response=await fetch("/api/market?view=window-history&ids="+encodeURIComponent(ids.join(","))+"&start="+encodeURIComponent(new Date(startMs).toISOString())+"&end="+encodeURIComponent(new Date(endMs).toISOString()),{headers:{Accept:"application/json"}});
+    response=await fetch("/api/market?view=window-history&ids="+encodeURIComponent(ids.join(","))+"&start="+encodeURIComponent(new Date(startMs).toISOString())+"&end="+encodeURIComponent(new Date(endMs).toISOString()),{headers:{Accept:"application/json",Authorization:"Bearer "+token}});
     body=await response.json().catch(()=>({}));
     if(Array.isArray(body.sourceReceipts))receiptSink.push(...body.sourceReceipts);
   }catch{return {status:"unavailable",startAt,endAt,interval:"24h",assets:[]};}
   if(!response.ok){
-    const status=body.error==="WINDOW_TOO_WIDE"?"window_too_wide":body.error==="CMC_ENTITLEMENT_OR_KEY"?"plan_unavailable":body.error==="CMC_RATE_LIMITED"?"rate_limited":"unavailable";
+    const status=body.error==="WINDOW_TOO_WIDE"?"window_too_wide":body.error==="CMC_ENTITLEMENT_OR_KEY"?"plan_unavailable":body.error==="CMC_RATE_LIMITED"?"rate_limited":body.error==="CMC_HISTORY_BUDGET_EXHAUSTED"?"budget_exhausted":body.error==="CMC_HISTORY_BUDGET_UNAVAILABLE"?"budget_unavailable":body.error==="CMC_HISTORY_AUTH_REQUIRED"?"auth_required":"unavailable";
     return {status,startAt,endAt,interval:"24h",assets:[]};
   }
   if(body.mode!=="live")return {status:"demo_mode",startAt,endAt,interval:"24h",assets:[]};
