@@ -12,3 +12,21 @@ html[data-theme="light"] .sun-icon{display:none}html[data-theme="light"] .moon-i
 .review-snapshot-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:12px 0}.review-snapshot-cell{display:grid;gap:7px;padding:14px;border:1px solid var(--line);border-radius:12px;background:var(--surface-2)}.review-snapshot-cell>small:first-child{color:var(--quiet);font:10px var(--mono);letter-spacing:.08em}.review-snapshot-cell>strong{font:600 17px var(--mono);color:var(--text)}.review-snapshot-cell>span{font-size:11px;color:var(--muted)}.review-snapshot-cell>small:not(:first-child){font-size:10px;color:var(--muted);margin-top:3px}@media(max-width:620px){.review-snapshot-grid{grid-template-columns:1fr}}
 
 .live-status{color:var(--lime);background:color-mix(in srgb,var(--lime) 8%,transparent)}
+
+.source-receipts{display:grid;gap:12px}
+.receipt-card{border:1px solid var(--line);border-radius:16px;background:var(--surface-2);padding:15px;display:grid;gap:12px}
+.receipt-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.receipt-head code,.receipt-params code{font-family:var(--mono);font-size:11px;line-height:1.6;color:var(--text);overflow-wrap:anywhere}
+.receipt-status{flex:none;border:1px solid var(--line);border-radius:999px;padding:4px 8px;text-transform:uppercase;font:10px var(--mono);letter-spacing:.05em;color:var(--text-2)}
+.receipt-status.success{color:var(--lime);border-color:color-mix(in srgb,var(--lime) 35%,var(--line))}
+.receipt-status.unavailable,.receipt-status.error{color:var(--red);border-color:color-mix(in srgb,var(--red) 35%,var(--line))}
+.receipt-meta{display:flex;flex-wrap:wrap;gap:6px 12px;color:var(--muted);font-size:11px}
+.receipt-params{display:grid;gap:5px}
+.receipt-params strong,.receipt-times dt{font:10px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.receipt-times{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:0}
+.receipt-times div{min-width:0}
+.receipt-times dd{margin:5px 0 0;color:var(--text-2);font-size:11px;line-height:1.5;overflow-wrap:anywhere}
+.receipt-summary{border-top:1px solid var(--line);padding-top:10px;color:var(--text-2);font-size:12px}
+.receipt-summary summary{cursor:pointer}
+.receipt-summary pre{margin:9px 0 0;padding:10px;border-radius:10px;background:var(--surface);color:var(--text-2);font:10px/1.6 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere}
+@media(max-width:560px){.receipt-card{padding:12px}.receipt-times{grid-template-columns:1fr}.receipt-head{flex-wrap:wrap}}

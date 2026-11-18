@@ -19,6 +19,7 @@ const demoData = {
 
 const state = {
   data: demoData,
+  latestSourceReceipts: [],
   view: "pulse",
   theses: startupTheses(),
   activeFilter: "all",
@@ -297,6 +298,7 @@ async function captureComparisonReplay(t,isLive,primaryResponse){
   if(!comparison||!Array.isArray(comparison.assets)||comparison.assets.length<2)return null;
   const sourceMatches=String(comparison.sourceProvider||t.baselineSnapshot?.sourceProvider||"").toLowerCase()==="coinmarketcap";
   const comparisonReady=!!isLive&&sourceMatches;
+  const receiptBatch=[...(primaryResponse?.sourceReceipts||[])];
   const assets=comparison.assets.slice(0,8);
   const primaryId=String(t.assetId||assets[0]?.id||"");
   const benchmarkAsset=assets.find(a=>String(a.id)===primaryId)||assets[0];
@@ -309,7 +311,7 @@ async function captureComparisonReplay(t,isLive,primaryResponse){
     let payload=null;
     try{
       if(id===String(t.assetId)&&primaryResponse)payload=primaryResponse;
-      else{const response=await fetch(`/api/market?view=asset&id=${encodeURIComponent(id)}`,{headers:{Accept:"application/json"}});if(response.ok)payload=await response.json();}
+      else{const response=await fetch(`/api/market?view=asset&id=${encodeURIComponent(id)}`,{headers:{Accept:"application/json"}});payload=await response.json();if(Array.isArray(payload?.sourceReceipts))receiptBatch.push(...payload.sourceReceipts);}
     }catch{}
     const asset=payload?.asset;
     if(!asset||String(asset.id)!==id||!hasNumericValue(asset.price)||Number(asset.price)<=0)return {id,symbol:baseline.symbol||"",name:baseline.name||"",baselinePrice:basePrice,currentPrice:null,priceReturnPct:null,relativeToBenchmarkPp:null,sourceObservedAt:null,retrievedAt:payload?.retrievedAt||null,status:"unavailable"};
@@ -320,6 +322,7 @@ async function captureComparisonReplay(t,isLive,primaryResponse){
   for(const item of items){if(item.status==="live"&&item.priceReturnPct!==null&&benchmark?.status==="live"&&benchmark.priceReturnPct!==null)item.relativeToBenchmarkPp=item.priceReturnPct-benchmark.priceReturnPct;}
   const relatives=items.filter(item=>item.id!==benchmarkId&&item.relativeToBenchmarkPp!==null).map(item=>item.relativeToBenchmarkPp);
   const availableAssets=items.filter(item=>item.status==="live").length;
+  state.latestSourceReceipts=[...new Map(receiptBatch.map(receipt=>[receipt.requestId,receipt])).values()];
   return {sourceProvider:availableAssets?"coinmarketcap":"unavailable",sourceEndpoint:"/v3/cryptocurrency/quotes/latest",capturedAt:new Date().toISOString(),baselineCapturedAt:comparison.capturedAt||t.baselineSnapshot?.capturedAt||null,benchmarkId,benchmarkSymbol:benchmarkAsset?.symbol||t.assetSymbol||"",selectedAssets:comparison.assets.length,replayedAssets:assets.length,availableAssets,status:!comparisonReady?"not_comparable":availableAssets===assets.length?"complete":availableAssets?"partial":"unavailable",cohortRelativePct:relatives.length?relatives.reduce((sum,value)=>sum+value,0)/relatives.length:null,items};
 }
 
@@ -368,7 +371,7 @@ async function reviewThesis(id) {
   const loading=`<div class="modal-head"><div><div class="panel-kicker">ADD A DATED OBSERVATION</div><h2 id="modal-title">Review your thesis</h2><p>Keeping the original snapshot unchanged while checking the latest source.</p></div><button id="modal-close" class="modal-close" aria-label="Close">×</button></div><div class="detail-note">${isLive?"Retrieving a fresh CoinMarketCap quote…":"This record is in demo mode; no live quote will be used."}</div>`;
   openModal(loading);
   let response=null;
-  if(isLive){try{const r=await fetch(`/api/market?view=asset&id=${encodeURIComponent(t.assetId)}`,{headers:{Accept:"application/json"}});if(!r.ok)throw new Error("Fresh market quote unavailable");response=await r.json();}catch{response=null;}}
+  if(isLive){try{const r=await fetch(`/api/market?view=asset&id=${encodeURIComponent(t.assetId)}`,{headers:{Accept:"application/json"}});if(!r.ok)throw new Error("Fresh market quote unavailable");response=await r.json();state.latestSourceReceipts=Array.isArray(response.sourceReceipts)?response.sourceReceipts:[];}catch{response=null;}}
   const live=!!(isLive&&response?.asset&&String(response.asset.id)===String(t.assetId)&&hasNumericValue(response.asset.price));
   const current=live?response.asset:(state.data.mode==="demo"?(state.data.assets.find(a=>String(a.id)===String(t.assetId)||a.symbol===t.assetSymbol)||null):null);
   const comparisonReplay=await captureComparisonReplay(t,isLive,response);
@@ -467,22 +470,22 @@ async function loadCompareHistory() {
   normalizeCompareSelections();
   if(state.data.mode!=="live")return;
   const key=`${state.comparePeriod}:${state.compareSymbols.join(",")}`;
-  if(state.historicalCache[key]){renderCompare();return;}
+  if(state.historicalCache[key]){state.latestSourceReceipts=[...new Map(state.historicalCache[key].flatMap(row=>row.sourceReceipts||[]).map(receipt=>[receipt.requestId,receipt])).values()];renderCompare();return;}
   if(state.historyPending[key])return;
   state.historyPending[key]=true;
   renderCompare();
   const rows=await Promise.all(state.compareSymbols.map(async symbol=>{
     const asset=compareAssetBySelection(symbol);if(!asset)return {symbol,series:[]};
-    try{const r=await fetch(`/api/market?view=history&id=${encodeURIComponent(asset.id)}&period=${state.comparePeriod}`,{headers:{Accept:"application/json"}});if(!r.ok)return {symbol,series:[]};const body=await r.json();return {symbol,series:Array.isArray(body.series)?body.series:[],retrievedAt:body.retrievedAt};}
+    try{const r=await fetch(`/api/market?view=history&id=${encodeURIComponent(asset.id)}&period=${state.comparePeriod}`,{headers:{Accept:"application/json"}});const body=await r.json().catch(()=>({}));return {symbol,series:r.ok&&Array.isArray(body.series)?body.series:[],retrievedAt:body.retrievedAt,sourceReceipts:Array.isArray(body.sourceReceipts)?body.sourceReceipts:[]};}
     catch{return {symbol,series:[]};}
   }));
-  state.historicalCache[key]=rows;delete state.historyPending[key];
+  state.historicalCache[key]=rows;delete state.historyPending[key];if(state.view==="compare"&&`${state.comparePeriod}:${state.compareSymbols.join(",")}`===key)state.latestSourceReceipts=[...new Map(rows.flatMap(row=>row.sourceReceipts||[]).map(receipt=>[receipt.requestId,receipt])).values()];
   if(state.view==="compare"&&`${state.comparePeriod}:${state.compareSymbols.join(",")}`===key)renderCompare();
 }
 
 async function refreshData() {
   const b=document.getElementById("refresh-data");b.disabled=true;b.innerHTML='<span class="refresh-symbol">↻</span> Updating…';
-  try { const r=await fetch("/api/market?view=overview",{headers:{Accept:"application/json"}}); if(!r.ok)throw new Error("Market data request failed"); const d=await r.json(); if(!d||!d.global||!Array.isArray(d.assets))throw new Error("Unexpected market response"); state.data=d;render();toast(d.mode==="live"?"Market context refreshed from CoinMarketCap.":"Demo data refreshed. Live API is not configured."); }
+  try { const r=await fetch("/api/market?view=overview",{headers:{Accept:"application/json"}}); const d=await r.json(); state.latestSourceReceipts=Array.isArray(d?.sourceReceipts)?d.sourceReceipts:[]; if(!r.ok)throw new Error("Market data request failed"); if(!d||!d.global||!Array.isArray(d.assets))throw new Error("Unexpected market response"); state.data=d;render();toast(d.mode==="live"?"Market context refreshed from CoinMarketCap.":"Demo data refreshed. Live API is not configured."); }
   catch(e){if(state.data.mode==="live"){toast("Refresh failed. Keeping the last successful live dataset and its source labels.",true);render();}else{toast("Market data could not be refreshed. Showing the labelled demo dataset.",true);state.data=demoData;render();}}
   finally{b.disabled=false;b.innerHTML='<span class="refresh-symbol">↻</span> Refresh data';}
 }
@@ -788,6 +791,29 @@ async function signOutWorkspace(){
   try{if(token)await sbRequest("/auth/v1/logout",{method:"POST",token});}catch{}
 }
 
+
+function receiptTime(value){
+  if(!value)return "Not supplied";
+  const date=new Date(value);
+  return Number.isNaN(date.getTime())?"Not supplied":date.toLocaleString(undefined,{dateStyle:"medium",timeStyle:"short"});
+}
+function sourceReceiptMarkup(){
+  const receipts=Array.isArray(state.latestSourceReceipts)?state.latestSourceReceipts:[];
+  const live=state.data?.mode==="live";
+  const cards=receipts.map(receipt=>{
+    const params=Object.entries(receipt.params||{});
+    const summary=JSON.stringify(receipt.responseSummary||{});
+    const outcome=String(receipt.outcome||"unknown");
+    return `<article class="receipt-card">
+      <div class="receipt-head"><code>${escapeHtml(receipt.endpoint||"Unknown CMC endpoint")}</code><span class="receipt-status ${escapeHtml(outcome)}">${escapeHtml(outcome)}</span></div>
+      <div class="receipt-meta"><span>${escapeHtml(receipt.method||"GET")} · ${escapeHtml(receipt.provider||"CoinMarketCap")}</span><span>Upstream HTTP ${escapeHtml(receipt.upstreamStatus??"—")}</span><span>Server cache ${escapeHtml(receipt.appCache?.status||"unknown")}</span></div>
+      <div class="receipt-params"><strong>Safe request parameters</strong><code>${params.length?escapeHtml(params.map(([key,value])=>`${key}=${value}`).join(" · ")):"None"}</code></div>
+      <dl class="receipt-times"><div><dt>Source observed</dt><dd>${escapeHtml(receiptTime(receipt.sourceObservedAt))}</dd></div><div><dt>Retrieved from CMC</dt><dd>${escapeHtml(receiptTime(receipt.appCache?.sourceRetrievedAt))}</dd></div><div><dt>Served by app</dt><dd>${escapeHtml(receiptTime(receipt.appCache?.servedAt))}</dd></div><div><dt>Records</dt><dd>${escapeHtml(receipt.recordCount??"—")}</dd></div></dl>
+      <details class="receipt-summary"><summary>Normalized response summary</summary><pre>${escapeHtml(summary)}</pre></details>
+    </article>`;
+  }).join("");
+  return `<div class="modal-head"><div><div class="panel-kicker">DATA CONNECTION · SOURCE RECEIPTS</div><h2 id="modal-title">Inspect the CMC source</h2><p>See the exact endpoint behind the latest market request and how fresh its data is.</p></div><button id="modal-close" class="modal-close" aria-label="Close">×</button></div><div class="detail-content source-receipts"><div class="detail-note">${live?"This request reached the server-side market adapter. The receipt contains allowlisted parameters and normalized summary fields only; API credentials, headers, and raw CMC payloads are never sent to this view.":"Demo mode is active. These illustrative values do not represent a CoinMarketCap API response; no CMC request was made."}</div>${cards|| (live?"<div class=\"empty-state\">No CMC request receipt is available for this view yet. Refresh market data or search an asset.</div>":"")}</div>`;
+}
 function setup() {
   const savedTheme=localStorage.getItem("cmc-lens-theme");if(savedTheme==="light"||savedTheme==="dark")document.documentElement.dataset.theme=savedTheme;
   document.querySelectorAll("[data-view]").forEach(el=>el.addEventListener("click",()=>switchView(el.dataset.view)));
@@ -804,7 +830,7 @@ function setup() {
   search.addEventListener("keydown",e=>{if(e.key==="Enter"){const a=state.data.assets.find(x=>x.name.toLowerCase().includes(search.value.toLowerCase())||x.symbol.toLowerCase()===search.value.toLowerCase());if(a)showAsset(a.symbol);}});
   document.getElementById("search-trigger").addEventListener("click",()=>{switchView("explore");setTimeout(()=>search.focus(),50)});
   document.getElementById("method-open").addEventListener("click",()=>openModal(`<div class="modal-head"><div><div class="panel-kicker">METHOD NOTE</div><h2 id="modal-title">Market breadth</h2><p>How the Market Pulse observation is assembled.</p></div><button id="modal-close" class="modal-close" aria-label="Close">×</button></div><div class="detail-content"><div class="detail-note">Breadth is the count of tracked assets with a positive reported 24-hour price change, divided by the tracked asset set. The demo uses a small illustrative set. In live mode, the exact CMC response window and number of assets will be shown here. Breadth says how widely prices moved in one direction; it does not identify the cause or forecast the next move.</div></div>`));
-  document.getElementById("connection-info").addEventListener("click",()=>openModal(`<div class="modal-head"><div><div class="panel-kicker">DATA CONNECTION</div><h2 id="modal-title">Source and freshness</h2><p>Know what you are looking at before you draw a conclusion.</p></div><button id="modal-close" class="modal-close" aria-label="Close">×</button></div><div class="detail-content"><div class="detail-note">Demo mode uses illustrative sample values and does not call CoinMarketCap. When a server-side API key is configured, the app will label the response live and show the retrieval time. CMC API credentials are never entered into the browser.</div></div>`));
+  document.getElementById("connection-info").addEventListener("click",()=>openModal(sourceReceiptMarkup()));
   document.querySelectorAll("[data-period]").forEach(el=>el.addEventListener("click",()=>{state.comparePeriod=el.dataset.period;document.querySelectorAll("[data-period]").forEach(x=>x.classList.toggle("selected",x===el));renderCompare();loadCompareHistory();}));
   document.querySelectorAll(".info-dot").forEach(el=>el.title=el.dataset.tip);
   document.getElementById("open-breadth").addEventListener("click",()=>switchView("compare"));
@@ -820,7 +846,7 @@ function setup() {
 }
 
 async function searchRemote(q,target="explore"){
-  try{const r=await fetch(`/api/market?view=search&q=${encodeURIComponent(q)}`,{headers:{Accept:"application/json"}});if(!r.ok)return;const body=await r.json();if(body.mode!=="live"||!Array.isArray(body.assets))return;const existing=new Set(state.data.assets.map(a=>String(a.id)));state.data.assets=[...state.data.assets,...body.assets.filter(a=>!existing.has(String(a.id)))];if(target==="compare")renderComparePickerResults();else renderExplore(document.getElementById("asset-search").value);}
+  try{const r=await fetch(`/api/market?view=search&q=${encodeURIComponent(q)}`,{headers:{Accept:"application/json"}});if(!r.ok)return;const body=await r.json();state.latestSourceReceipts=Array.isArray(body.sourceReceipts)?body.sourceReceipts:[];if(body.mode!=="live"||!Array.isArray(body.assets))return;const existing=new Set(state.data.assets.map(a=>String(a.id)));state.data.assets=[...state.data.assets,...body.assets.filter(a=>!existing.has(String(a.id)))];if(target==="compare")renderComparePickerResults();else renderExplore(document.getElementById("asset-search").value);}
   catch{ /* Keep the already-rendered search results usable if the API is unavailable. */ }
 }
 
