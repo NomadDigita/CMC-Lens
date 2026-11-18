@@ -1,7 +1,7 @@
 const demoData = {
   mode: "demo",
   retrievedAt: "2026-11-18T13:30:00.000Z",
-  global: { marketCap: 2.48e12, marketCapChange24h: 2.84, btcDominance: 54.8, btcDominanceChange24h: -0.36, breadth: 75, breadthCount: 6, breadthTotal: 8, sentiment: 62 },
+  global: { marketCap: 2.48e12, marketCapChange24h: 2.84, btcDominance: 54.8, btcDominanceChange24h: -0.36, breadth: 75, breadthCount: 6, breadthDeclining: 2, breadthFlat: 0, breadthMissing: 0, breadthTotal: 8, breadthUniverse: 8, breadthCoverage: 100, sentiment: 62, sentimentClassification: "Mixed sentiment", sentimentSource: "Illustrative demo" },
   categories: [
     { name: "Layer 1", advancing: 82 }, { name: "DeFi", advancing: 74 }, { name: "AI & Data", advancing: 61 }, { name: "Gaming", advancing: 53 }, { name: "Meme", advancing: 39 }
   ],
@@ -69,7 +69,7 @@ function renderCategoryChart() {
   const host = document.getElementById("category-chart");
   if (!state.data.categories.length) { host.innerHTML = `<div class="category-empty">Category coverage is not available in this data response.</div>`; return; }
   host.innerHTML = state.data.categories.map(c => `<div class="cat-row"><span class="cat-name">${escapeHtml(c.name)}</span><div class="cat-track"><i style="--width:${Math.max(0, Math.min(100, c.advancing))}%"></i></div><span class="cat-value">${Math.round(c.advancing)}%</span></div>`).join("");
-  host.querySelectorAll(".cat-row").forEach((row,i)=>{const c=state.data.categories[i]||{};row.title="Covered "+(c.covered??c.total??"—")+" of "+(c.universe??"—")+"; missing "+(c.missing??"—");});
+  host.querySelectorAll(".cat-row").forEach((row,i)=>{const c=state.data.categories[i]||{};row.title=hasNumericValue(c.total)&&hasNumericValue(c.universe)?"Covered "+c.total+" of "+c.universe+"; missing "+(c.missing??Math.max(0,c.universe-c.total)):state.data.mode==="demo"?"Illustrative demo category sample; coverage denominator not supplied":"Category coverage unavailable";});
 }
 
 function renderMovements() {
@@ -163,8 +163,6 @@ function render() {
   const coverage = hasNumericValue(g.breadthCoverage) ? Number(g.breadthCoverage) : (universe>0?breadthTotal/universe*100:null);
   document.getElementById("breadth-value").textContent = breadthAvailable ? String(breadthCount) : "—";
   document.getElementById("breadth-total").textContent = String(breadthTotal);
-  document.getElementById("breadth-advancing").textContent = String(breadthCount);
-  document.getElementById("breadth-declining").textContent = declining===null ? "—" : String(declining);
   const breadthLegend=document.querySelector(".breadth-legend");
   if(breadthLegend)breadthLegend.innerHTML="<span>Advancing <b>"+breadthCount+"</b></span><span>Declining <b>"+(declining===null?"—":declining)+"</b></span><span>Flat <b>"+(flat===null?"—":flat)+"</b></span><span>Missing <b>"+(missing===null?"—":missing)+"</b></span>";
   document.getElementById("breadth-scope").textContent = state.data.mode === "live" ? (universe>breadthTotal ? "CMC "+breadthTotal+"/"+universe : "CMC COVERED SET") : "DEMO SAMPLE";
@@ -189,7 +187,7 @@ function render() {
   const sentimentClassification=sentimentMetadata.classification||g.sentimentClassification||(hasSentiment?(sentiment>=65?"Greed signal":sentiment<=35?"Fear signal":"Mixed sentiment"):"No live source enabled");
   document.getElementById("sentiment-label").textContent=sentimentClassification;
   const sentimentFoot=document.querySelector(".sentiment-card .metric-foot");
-  if(sentimentFoot){const source=sentimentMetadata.source||g.sentimentSource||(hasSentiment?"CoinMarketCap":"source unavailable");const timestamp=sentimentMetadata.observedAt||g.sentimentObservedAt||null;sentimentFoot.textContent="context only · "+source+(timestamp?" · "+new Date(timestamp).toLocaleString():" · timestamp unavailable");}
+  if(sentimentFoot){const source=state.data.mode==="demo"?"Illustrative demo":(sentimentMetadata.source||g.sentimentSource||(hasSentiment?"CoinMarketCap":"source unavailable"));const timestamp=sentimentMetadata.observedAt||g.sentimentObservedAt||null;const validTimestamp=timestamp&&!Number.isNaN(new Date(timestamp).getTime())?" · "+new Date(timestamp).toLocaleString():" · timestamp unavailable";const label="context only · "+source+validTimestamp;const textNode=[...sentimentFoot.childNodes].find(node=>node.nodeType===Node.TEXT_NODE);if(textNode)textNode.nodeValue=label+" ";else sentimentFoot.prepend(document.createTextNode(label+" "));}
   document.getElementById("sentiment-marker").style.left = hasSentiment ? `${Math.max(0,Math.min(100,Number(sentiment)))}%` : "0%";
   document.getElementById("sentiment-marker").style.display = hasSentiment ? "block" : "none";
   const dateEl = document.getElementById("local-date");
