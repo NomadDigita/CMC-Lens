@@ -22,14 +22,14 @@ function setCached(key, value) {
   SERVER_CACHE.set(key, { at: Date.now(), value });
 }
 
-async function cmc(path, params) {
+async function cmc(path, params, timeoutMs = 9000) {
   const url = new URL(`${CMC_ORIGIN}${path}`);
   Object.entries(params).forEach(([key, value]) => {
     if (value !== undefined && value !== null && value !== "") url.searchParams.set(key, String(value));
   });
   const response = await fetch(url, {
     headers: { "X-CMC_PRO_API_KEY": process.env.CMC_PRO_API_KEY, Accept: "application/json" },
-    signal: AbortSignal.timeout(9000)
+    signal: AbortSignal.timeout(timeoutMs)
   });
   const payload = await response.json();
   const cmcCode = Number(payload?.status?.error_code ?? 0);
@@ -48,73 +48,168 @@ function quoteFor(item) {
   return item?.quote?.USD || {};
 }
 
+const CATEGORY_TAGS = new Map([
+  ["meme", "Meme"], ["memes", "Meme"], ["memecoin", "Meme"], ["memecoins", "Meme"],
+  ["gaming", "Gaming"], ["gamefi", "Gaming"], ["play-to-earn", "Gaming"],
+  ["ai", "AI & Data"], ["artificial-intelligence", "AI & Data"], ["ai-big-data", "AI & Data"], ["ai-and-big-data", "AI & Data"], ["ai-agents", "AI & Data"],
+  ["defi", "DeFi"], ["decentralized-finance", "DeFi"],
+  ["layer-2", "Layer 2"], ["layer-2s", "Layer 2"], ["layer-2-l2", "Layer 2"], ["layer-2-l2s", "Layer 2"],
+  ["layer-1", "Layer 1"], ["layer-1s", "Layer 1"], ["layer-1-l1", "Layer 1"], ["layer-1-l1s", "Layer 1"],
+  ["smart-contracts", "Smart contracts"], ["smart-contract-platform", "Smart contracts"]
+]);
+
+function normalizeTagSlug(value) {
+  return String(value || "").trim().toLowerCase()
+    .normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/&/g, "and").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
 function categoryFor(tags = []) {
-  const normalized = tags.map(tag => typeof tag === "string"
-    ? tag.toLowerCase()
-    : `${tag?.slug || ""} ${tag?.name || ""} ${tag?.category || ""}`.toLowerCase());
-  if (normalized.some(tag => /meme/.test(tag))) return "Meme";
-  if (normalized.some(tag => /gaming|gamefi|play-to-earn/.test(tag))) return "Gaming";
-  if (normalized.some(tag => /artificial-intelligence|ai-and-big-data|ai/.test(tag))) return "AI & Data";
-  if (normalized.some(tag => /decentralized-finance|defi/.test(tag))) return "DeFi";
-  if (normalized.some(tag => /layer-1|layer-2|smart-contract-platform/.test(tag))) return "Layer 1";
+  if (!Array.isArray(tags)) return null;
+  for (const tag of tags) {
+    const candidates = typeof tag === "string"
+      ? [tag]
+      : [tag?.slug, tag?.name, tag?.category].filter(Boolean);
+    for (const candidate of candidates) {
+      const category = CATEGORY_TAGS.get(normalizeTagSlug(candidate));
+      if (category) return category;
+    }
+  }
   return null;
 }
 
-function normalizeOverview(globalData, listings) {
+function finiteMetric(value) {
+  if (value === null || value === undefined || (typeof value === "string" && !value.trim())) return null;
+  const number = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function formatPercent(value) {
+  return `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`;
+}
+
+function readFearGreedRecord(data) {
+  const item = Array.isArray(data) ? data[0] : data;
+  if (!item || typeof item !== "object") return null;
+  const value = finiteMetric(item.value ?? item.fear_and_greed_index);
+  if (value === null) return null;
+  return {
+    value,
+    classification: item.value_classification || item.classification || null,
+    observedAt: item.update_time || item.timestamp || item.last_updated || null
+  };
+}
+
+const FEAR_GREED_SUCCESS_MS = 15 * 60_000;
+const FEAR_GREED_FAILURE_MS = 5 * 60_000;
+
+function fearGreedCacheValue() {
+  const entry = SERVER_CACHE.get("fear-greed");
+  if (!entry) return undefined;
+  if (Date.now() - entry.at > entry.expiresAfter) {
+    SERVER_CACHE.delete("fear-greed");
+    return undefined;
+  }
+  return entry.value;
+}
+
+async function optionalFearGreed() {
+  const cached = fearGreedCacheValue();
+  if (cached !== undefined) return cached;
+  const pending = SERVER_CACHE.get("fear-greed-inflight")?.value;
+  if (pending) return pending;
+  const request = (async () => {
+    try {
+      const data = await cmc("/v3/fear-and-greed/latest", {}, 1800);
+      const record = readFearGreedRecord(data);
+      if (!record) throw new Error("Fear & Greed response contained no usable value");
+      SERVER_CACHE.set("fear-greed", { at: Date.now(), value: record, expiresAfter: FEAR_GREED_SUCCESS_MS });
+      return record;
+    } catch {
+      SERVER_CACHE.set("fear-greed", { at: Date.now(), value: null, expiresAfter: FEAR_GREED_FAILURE_MS });
+      return null;
+    } finally {
+      SERVER_CACHE.delete("fear-greed-inflight");
+    }
+  })();
+  SERVER_CACHE.set("fear-greed-inflight", { at: Date.now(), value: request });
+  return request;
+}
+
+function normalizeOverview(globalData, listings, sentiment = null) {
   const quote = globalData?.quote?.USD || {};
   const assets = (listings || []).map(item => {
     const usd = quoteFor(item);
     return {
       id: String(item.id), name: item.name, symbol: item.symbol,
-      price: usd.price, change24h: usd.percent_change_24h,
-      marketCap: usd.market_cap, volume24h: usd.volume_24h,
+      price: finiteMetric(usd.price), change24h: finiteMetric(usd.percent_change_24h),
+      marketCap: finiteMetric(usd.market_cap), volume24h: finiteMetric(usd.volume_24h),
       observedAt: usd.last_updated || item.last_updated || null,
-      color: "#8ca2ec", peers: categoryFor(item.tags || []) || "market context",
-      peerDelta: 50, tags: item.tags || []
+      color: "#8ca2ec", peers: "No peer data", peerDelta: null, tags: item.tags || []
     };
   });
-  const peerGroups = new Map();
-  assets.forEach(item => {
-    const label = categoryFor(item.tags) || "Market";
-    const group = peerGroups.get(label) || [];
-    group.push(Number(item.change24h) || 0);
-    peerGroups.set(label, group);
-  });
-  assets.forEach(item => {
-    const label = categoryFor(item.tags) || "Market";
-    const values = peerGroups.get(label) || [];
-    const average = values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
-    item.peers = `${label} mean ${average >= 0 ? "+" : ""}${average.toFixed(2)}%`;
-    item.peerDelta = Math.max(8, Math.min(100, Math.round(50 + (Number(item.change24h) - average) * 4)));
-  });
-  const rising = assets.filter(item => Number(item.change24h) > 0).length;
-  const total = assets.length;
+  const covered = assets.filter(item => item.change24h !== null);
+  const rising = covered.filter(item => item.change24h > 0).length;
+  const declining = covered.filter(item => item.change24h < 0).length;
+  const flat = covered.filter(item => item.change24h === 0).length;
+  const missing = assets.length - covered.length;
   const categories = new Map();
-  assets.forEach(item => {
+  for (const item of assets) {
     const label = categoryFor(item.tags);
-    if (!label) return;
-    const row = categories.get(label) || { name: label, advancing: 0, total: 0 };
-    row.total += 1;
-    if (Number(item.change24h) > 0) row.advancing += 1;
+    if (!label) continue;
+    const row = categories.get(label) || { name: label, advancing: 0, total: 0, universe: 0 };
+    row.universe += 1;
+    if (item.change24h !== null) {
+      row.total += 1;
+      if (item.change24h > 0) row.advancing += 1;
+    }
     categories.set(label, row);
-  });
+  }
+  for (const item of assets) {
+    if (item.change24h === null) continue;
+    const label = categoryFor(item.tags);
+    const categoryPeers = label
+      ? covered.filter(candidate => candidate.id !== item.id && categoryFor(candidate.tags) === label)
+      : [];
+    const cohort = categoryPeers.length
+      ? categoryPeers
+      : covered.filter(candidate => candidate.id !== item.id);
+    if (!cohort.length) continue;
+    const average = cohort.reduce((sum, candidate) => sum + candidate.change24h, 0) / cohort.length;
+    item.peers = `${categoryPeers.length ? label + " mean" : "Market mean"} ${formatPercent(average)}`;
+    item.peerDelta = Math.max(0, Math.min(100, Math.round(50 + (item.change24h - average) * 4)));
+  }
   const normalizedCategories = [...categories.values()]
     .filter(row => row.total >= 3)
-    .map(row => ({ name: row.name, advancing: row.total ? Math.round((row.advancing / row.total) * 100) : 0 }))
-    .sort((a,b) => b.advancing - a.advancing).slice(0,5);
+    .map(row => ({
+      name: row.name,
+      advancing: Math.round((row.advancing / row.total) * 100),
+      advancingCount: row.advancing,
+      total: row.total,
+      universe: row.universe,
+      missing: row.universe - row.total
+    }))
+    .sort((a, b) => b.advancing - a.advancing).slice(0, 5);
+  const totalMarketCap = finiteMetric(quote.total_market_cap);
   return {
     mode: "live",
     retrievedAt: new Date().toISOString(),
     global: {
-      marketCap: quote.total_market_cap,
-      marketCapChange24h: Number.isFinite(Number(quote.total_market_cap_yesterday_percentage_change))
-        ? Number(quote.total_market_cap_yesterday_percentage_change) : null,
-      btcDominance: globalData?.btc_dominance,
-      btcDominanceChange24h: globalData?.btc_dominance_24h_percentage_change,
-      breadth: total ? Math.round((rising / total) * 100) : null,
+      marketCap: totalMarketCap,
+      marketCapChange24h: finiteMetric(quote.total_market_cap_yesterday_percentage_change),
+      btcDominance: finiteMetric(globalData?.btc_dominance),
+      btcDominanceChange24h: finiteMetric(globalData?.btc_dominance_24h_percentage_change),
+      breadth: covered.length ? Math.round((rising / covered.length) * 100) : null,
       breadthCount: rising,
-      breadthTotal: total,
-      sentiment: null
+      breadthDeclining: declining,
+      breadthFlat: flat,
+      breadthMissing: missing,
+      breadthTotal: covered.length,
+      breadthUniverse: assets.length,
+      breadthCoverage: assets.length ? Math.round((covered.length / assets.length) * 100) : 0,
+      sentiment: sentiment?.value ?? null,
+      sentimentClassification: sentiment?.classification ?? null,
+      sentimentObservedAt: sentiment?.observedAt ?? null
     },
     categories: normalizedCategories,
     assets: assets.slice(0, 100),
@@ -125,11 +220,12 @@ function normalizeOverview(globalData, listings) {
 async function liveOverview() {
   const key = getCached("overview-v1");
   if (key) return key;
-  const [globalData, listingData] = await Promise.all([
+  const [globalData, listingData, sentiment] = await Promise.all([
     cmc("/v1/global-metrics/quotes/latest", { convert: "USD" }),
-    cmc("/v3/cryptocurrency/listings/latest", { start: 1, limit: 100, convert: "USD", sort: "market_cap", sort_dir: "desc", aux: "tags" })
+    cmc("/v3/cryptocurrency/listings/latest", { start: 1, limit: 100, convert: "USD", sort: "market_cap", sort_dir: "desc", aux: "tags" }),
+    optionalFearGreed().catch(() => null)
   ]);
-  const result = normalizeOverview(globalData, listingData);
+  const result = normalizeOverview(globalData, listingData, sentiment);
   setCached("overview-v1", result);
   return result;
 }
