@@ -716,9 +716,9 @@ async function syncWorkspace(){
   const assertCurrent=()=>{if(auth.syncJob!==job||auth.syncEpoch!==epoch||auth.user?.id!==owner||job.controller.signal.aborted)throw new DOMException("Workspace sync was superseded.","AbortError");};
   const request=(path,options={})=>{assertCurrent();return sbRequest(path,{...options,token,signal:job.controller.signal});};
   const insertOnly="resolution=ignore-duplicates,return=minimal";
-  const fetchAllRows=async path=>{const all=[];for(let offset=0;;offset+=500){const page=await request(`${path}${path.includes("?")?"&":"?"}limit=500&offset=${offset}`);if(Array.isArray(page))all.push(...page);if(!Array.isArray(page)||page.length<500)break;}return all;};
+  const fetchAllRows=async path=>{const all=[];let cursor=null;for(;;){const after=cursor?`&id=gt.${encodeURIComponent(cursor)}`:"";const page=await request(`${path}${after}&order=id.asc&limit=500`);if(Array.isArray(page))all.push(...page);if(!Array.isArray(page)||page.length<500)break;const next=page[page.length-1]?.id;if(!next||next===cursor)break;cursor=next;}return all;};
   try{
-    const remoteAtStart=await fetchAllRows(`/rest/v1/theses?select=*&owner_id=eq.${encodeURIComponent(owner)}&order=created_at.desc,id.desc`);
+    const remoteAtStart=await fetchAllRows(`/rest/v1/theses?select=*&owner_id=eq.${encodeURIComponent(owner)}`);
     const remoteAtStartById=new Map((remoteAtStart||[]).map(row=>[row.id,row]));
     for(const t of theses){
       const syncChoice=resolveThesisSyncConflict(t,remoteAtStartById.get(t.id));
@@ -731,7 +731,7 @@ async function syncWorkspace(){
       if(!remoteAtStartById.get(t.id)?.baseline_snapshot_id)await request(`/rest/v1/theses?id=eq.${encodeURIComponent(t.id)}`,{method:"PATCH",body:{baseline_snapshot_id:t.baselineSnapshotId},prefer:"return=minimal"});
       const evidence=(t.evidence||[]).map(item=>{item.id ||= crypto.randomUUID();return {id:item.id,owner_id:owner,thesis_id:t.id,snapshot_id:t.baselineSnapshotId,kind:item.kind||"metric",label:item.label,detail:item.detail||"",source_url:item.sourceUrl||null,source_timestamp:item.sourceTimestamp??null,value_text:item.value||null,unit:item.unit||null,direction:item.direction||"neutral"};});
       if(evidence.length)await request("/rest/v1/evidence_items?on_conflict=id",{method:"POST",body:evidence,prefer:insertOnly});
-      if(t.condition){t.conditionId ||= crypto.randomUUID();await request("/rest/v1/thesis_conditions?on_conflict=id",{method:"POST",body:{id:t.conditionId,owner_id:owner,thesis_id:t.id,condition_type:"qualitative",metric_key:"user_defined",effect:"weaken",description:t.condition,active:true},prefer:"resolution=merge-duplicates,return=minimal"});}
+      if(t.condition&&syncChoice!=="remote"){t.conditionId ||= crypto.randomUUID();await request("/rest/v1/thesis_conditions?on_conflict=id",{method:"POST",body:{id:t.conditionId,owner_id:owner,thesis_id:t.id,condition_type:"qualitative",metric_key:"user_defined",effect:"weaken",description:t.condition,active:true},prefer:"resolution=merge-duplicates,return=minimal"});}
       for(const review of t.reviews||[]){review.id ||= crypto.randomUUID();review.snapshotId ||= crypto.randomUUID();await request("/rest/v1/thesis_snapshots?on_conflict=id",{method:"POST",body:{id:review.snapshotId,owner_id:owner,thesis_id:t.id,snapshot_kind:"manual_review",source_provider:review.snapshot?.sourceProvider||"unavailable",source_endpoint:review.snapshot?.sourceEndpoint||null,source_observed_at:review.snapshot?.sourceObservedAt??null,captured_at:review.snapshot?.capturedAt||review.date,source_payload:{assetSymbol:t.assetSymbol||null,retrievedAt:review.snapshot?.retrievedAt??null,review:review.snapshot||null},derived_metrics:review.snapshot?.derivedMetrics||{},coverage:review.snapshot?.coverage||"unavailable",limitations:review.snapshot?.limitations||"No fresh source snapshot was captured at review time."},prefer:insertOnly});await request("/rest/v1/thesis_reviews?on_conflict=id",{method:"POST",body:{id:review.id,owner_id:owner,thesis_id:t.id,snapshot_id:review.snapshotId,reviewed_at:review.date,result_label:review.result,summary:review.note||""},prefer:insertOnly});}
     }
     const remote=await fetchAllRows(`/rest/v1/theses?select=*&owner_id=eq.${encodeURIComponent(owner)}&order=created_at.desc,id.desc`);
@@ -741,12 +741,12 @@ async function syncWorkspace(){
       const group=remoteRows.slice(offset,offset+50);
       const ids=group.map(row=>row.id).filter(Boolean).join(",");
       if(!ids)continue;
-      const filter=`/rest/v1/evidence_items?select=*&owner_id=eq.${encodeURIComponent(owner)}&thesis_id=in.(${ids})&order=created_at.asc`;
+      const filter=`/rest/v1/evidence_items?select=*&owner_id=eq.${encodeURIComponent(owner)}&thesis_id=in.(${ids})`;
       const [evidence,reviews,snapshots,conditions]=await Promise.all([
         fetchAllRows(filter),
-        fetchAllRows(`/rest/v1/thesis_reviews?select=*&owner_id=eq.${encodeURIComponent(owner)}&thesis_id=in.(${ids})&order=reviewed_at.asc`),
-        fetchAllRows(`/rest/v1/thesis_snapshots?select=*&owner_id=eq.${encodeURIComponent(owner)}&thesis_id=in.(${ids})&order=captured_at.asc`),
-        fetchAllRows(`/rest/v1/thesis_conditions?select=*&owner_id=eq.${encodeURIComponent(owner)}&thesis_id=in.(${ids})&active=eq.true&order=created_at.asc`)
+        fetchAllRows(`/rest/v1/thesis_reviews?select=*&owner_id=eq.${encodeURIComponent(owner)}&thesis_id=in.(${ids})`),
+        fetchAllRows(`/rest/v1/thesis_snapshots?select=*&owner_id=eq.${encodeURIComponent(owner)}&thesis_id=in.(${ids})`),
+        fetchAllRows(`/rest/v1/thesis_conditions?select=*&owner_id=eq.${encodeURIComponent(owner)}&thesis_id=in.(${ids})&active=eq.true`)
       ]);
       history.evidence.push(...(evidence||[]));history.reviews.push(...(reviews||[]));history.snapshots.push(...(snapshots||[]));history.conditions.push(...(conditions||[]));
     }
