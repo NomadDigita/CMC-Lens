@@ -484,6 +484,9 @@ module.exports = async function handler(req, res) {
       const cacheKey="window-history:"+canonicalIds.join(",")+":"+startIso+":"+cacheEndIso;
       const cached=getCached(cacheKey,WINDOW_HISTORY_CACHE_MS);
       if(cached){
+        const authCheck=await reserveSharedWindowHistoryBudget(token,0);
+        if(authCheck.error==="CMC_HISTORY_AUTH_REQUIRED")return reply(res,401,{error:authCheck.error,sourceReceipts});
+        if(authCheck.error)return reply(res,503,{error:"CMC_HISTORY_BUDGET_UNAVAILABLE",retryable:true,sourceReceipts});
         sourceReceipts.push(...cachedSourceReceipts(cached.sourceReceipts));
         return reply(res,200,{mode:"live",retrievedAt:new Date().toISOString(),source:{provider:"CoinMarketCap",endpoint:"/v3/cryptocurrency/quotes/historical",interval:"24h",cache:"hit"},timeStart:startIso,timeEnd:endIso,series:cached.series,sourceReceipts});
       }
