@@ -4,7 +4,7 @@
 
 - CoinMarketCap is the source of market facts; the user is the source of thesis language and review conclusions.
 - Keep raw source facts distinct from derived values and narrative explanations.
-- Record the selected asset ID, endpoint, period, quote currency, source timestamp, retrieval time, and method version.
+- Record the selected asset ID, endpoint, period, quote currency, per-asset source timestamp, retrieval time, and method version.
 - Never imply that a missing or inaccessible endpoint returned an empty market.
 - Use a demo payload only when clearly marked and visibly different from live data.
 
