@@ -51,7 +51,10 @@ function money(n, digits = 2) {
   if (v >= 1e12) return `$${(v / 1e12).toFixed(2)}T`;
   if (v >= 1e9) return `$${(v / 1e9).toFixed(digits > 1 ? 2 : 1)}B`;
   if (v >= 1e6) return `$${(v / 1e6).toFixed(1)}M`;
-  if (v >= 1) return `$${v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: digits })}`;
+  if (v >= 1) {
+    const maxFractionDigits = Math.max(2, Math.min(8, Number.isFinite(Number(digits)) ? Math.trunc(Number(digits)) : 2));
+    return `${v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: maxFractionDigits })}`;
+  }
   return `$${v.toFixed(4)}`;
 }
 function fmtPercent(v, plus = true) { const n = Number(v); return `${plus && n > 0 ? "+" : ""}${n.toFixed(2)}%`; }
