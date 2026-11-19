@@ -29,6 +29,12 @@ The MVP is designed so it can work with a small set of authorized endpoints. Dat
 
 The Atlas reuses the latest CMC listings response and adds no upstream market-data request. Its universe descriptor is explicitly `top-100-by-market-cap`, with queried, covered, and missing counts. Each asset includes one deterministic primary category, category peer coverage, peer mean 24-hour return, and relative return (asset return minus the mean of other covered assets in that category). If no covered peer sample exists, the relative return is `null`; market-mean context remains separately labeled. Missing metrics remain `null`, and the sample is never described as the whole market. The UI offers both the rotation map and a keyboard-accessible list/table view.
 
+## RWA issuer coverage and concentration
+
+For each returned RWA asset, CMC Lens derives four descriptive observations from the instruments included in `/v5/real-world-assets/quotes/latest`: number of instruments with a numeric price, number with a numeric 24-hour volume, the reported token-price range relative to CMC's aggregate tokenized average, and the largest issuer's share of positive reported 24-hour token volume. Volume share groups multiple tokens under one issuer before calculating the share. Zero is retained as a reported volume value but contributes nothing to positive-volume concentration; null, empty, and malformed values are missing. The denominator is only the set of instruments returned for that underlying, not all tokens in the market.
+
+Each thesis baseline and follow-up snapshot stores these derived fields alongside the issuer rows and source receipts. The method is descriptive: it is not a market-quality score, underlying-market liquidity estimate, redemption assessment, parity check, or arbitrage signal. Freshness is displayed from CMC's aggregate asset timestamp; the API response does not provide a per-token timestamp for each issuer row, so CMC Lens does not imply per-instrument freshness.
+
 ## Adapter contract
 
 Each adapter method returns a normalized envelope:

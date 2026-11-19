@@ -3,10 +3,10 @@
 **Last checked:** November 19, 2026  
 **Event:** [Build with CMC: API Hackathon, Round 2](https://coinmarketcap.com/api/ja/resources/api-hackathon-2026-11/)  
 **Submission window:** November 18–December 9, 2026; closes December 9 at 23:59 UTC  
-**Recommended track:** Data and Visualisation  
+**Recommended track:** Real World Assets
 **Project:** CMC Lens — a research workspace for exploring CMC market data, comparing matched assets, and reviewing dated theses.
 
-The repository and CMC integration predate this event. The hackathon-specific contribution is clearly identified as the live Market Atlas and matched-window comparison replay: the Atlas explores CMC's top-100-by-market-cap listings with category-relative context and coverage; replay revisits the same saved CMC IDs across a matched date window and keeps missing observations visible.
+The repository and CMC integration predate this event. The hackathon-specific contribution is clearly identified as the live RWA Desk and its new `/v5/real-world-assets/` integration: an underlying-to-issuer explorer with token-level price and liquidity coverage, issuer-volume concentration, dispersion context, and dated thesis review. The Market Atlas and matched-window replay remain supporting Data and Visualisation capabilities. The official brief lists Real World Assets for tokenized equities, commodities, treasuries, issuer explorers, and builds on the new RWA endpoints; that is the closest fit for the new work.
 
 ## Official submission requirements
 
@@ -26,7 +26,7 @@ The public repo, live demo, named endpoints, and redacted live receipts are avai
 
 CMC Lens is not a generic price dashboard. It helps an independent researcher ask whether a move is broad or asset-specific, preserve the exact CMC IDs and observations behind a comparison, record the question and conditions that would change their view, then append later reviews without rewriting the original evidence.
 
-**Primary track rationale:** Data and Visualisation best fits the Market Atlas, matched comparisons, and provenance-first research workflow. Track selection remains to be made in the DoraHacks form.
+**Primary track rationale:** Real World Assets directly matches the new CMC RWA endpoints and issuer explorer. Track selection remains to be made in the DoraHacks form. The official CMC page provides the overall rubric (30 work, 25 usefulness, 20 API use, 15 code/docs, 10 presentation); it says per-track weightings appear on DoraHacks, which have not been verified here.
 
 ## CMC API endpoints used
 
