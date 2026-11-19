@@ -217,7 +217,7 @@ h1 em{color:var(--lime);font-family:Georgia,"Times New Roman",serif;font-weight:
 .auth-mark svg{width:27px;height:27px;fill:none;stroke:var(--lime);stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 .auth-modal .modal-head{padding-top:0}
 .auth-provider-stack{padding:0 22px}
-.auth-google-button{display:flex;align-items:center;justify-content:center;gap:11px;width:100%;min-height:48px;border:1px solid var(--line);border-radius:11px;background:var(--surface);color:var(--text);font-size:12px;font-weight:650;cursor:pointer;transition:background .18s,border-color .18s,transform .18s}
+.auth-google-button{position:relative;display:flex;align-items:center;justify-content:center;gap:11px;width:100%;min-height:48px;border:1px solid var(--line);border-radius:11px;background:var(--surface);color:var(--text);font-size:12px;font-weight:650;cursor:pointer;transition:background .18s,border-color .18s,transform .18s}
 .auth-google-button:hover{background:var(--surface-2);border-color:var(--muted);transform:translateY(-1px)}
 .auth-google-button svg{width:19px;height:19px;flex:none}
 .auth-button-arrow{position:absolute;right:42px;color:var(--muted);font-size:16px;font-weight:400}
