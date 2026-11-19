@@ -2,7 +2,7 @@
 
 **Target length:** 90–120 seconds  
 **Audience:** CMC API hackathon judges and independent crypto researchers  
-**Primary track:** Data and Visualisation (recommended; select it in DoraHacks before submission)
+**Primary track:** Real World Assets (recommended; select it in DoraHacks before submission)
 
 ## Before recording
 
@@ -20,21 +20,21 @@
 
 Show the Market Pulse live/demo indicator and CMC attribution.
 
-### 0:15–0:40 — Find a move in Market Atlas
+### 0:15–0:40 — Inspect one underlying across issuers
 
-Open **Market Atlas**. Point out the top-100-by-market-cap scope, current quote coverage, absolute 24-hour return on the horizontal axis, and relative return against covered category peers on the vertical axis. Change one category or market-cap filter, then select an asset. Mention that missing category/peer coverage remains blank rather than being estimated.
+Open **RWA Desk** and select NVIDIA or Gold. Show the CMC tokenized average, reported issuer instruments, missing prices, and dispersion against the tokenized average. Then point out quote coverage, volume coverage, price range, and each issuer's share of reported token volume. State that concentration is limited to returned token rows and does not describe the underlying market.
 
 ### 0:40–0:55 — Prove the source
 
-Open **Inspect source**. Show the endpoint path, safe query parameters, upstream status, count, and source/retrieval times. The latest verified production overview included successful responses from /v1/global-metrics/quotes/latest, /v3/fear-and-greed/latest, and /v3/cryptocurrency/listings/latest. Do not show request headers, keys, or raw payloads.
+Open the source receipt for the selected RWA detail. Show `/v5/real-world-assets/quotes/latest` and `/v5/real-world-assets/info`, their safe request parameters, upstream status, record counts, and retrieval times. Do not show request headers, keys, or raw payloads.
 
-### 0:55–1:20 — Compare the same assets
+### 0:55–1:20 — Preserve and revisit the comparison
 
-Add two or three assets to the research cohort and choose **Compare selected**. Show the common window and matched CMC IDs. If live historical quotes are returned, point out that gaps remain visible. If CMC denies or lacks history, show the explicit unavailable state and explain that history depends on API entitlement.
+Choose **Save issuer comparison**. Explain that the baseline preserves token values, source receipts, quote coverage, volume coverage, and issuer concentration. In a follow-up review, show the new snapshot beside the frozen baseline; missing instruments remain missing rather than being treated as zero.
 
 ### 1:20–1:45 — Preserve the reasoning
 
-Choose **Save as thesis**. Record a concise question, what supports it, what conflicts with it, and one condition that would change the view. Show that the record carries a baseline and can be reviewed later; do not describe the thesis as an automated recommendation.
+Record a concise question, what supports it, what conflicts with it, and one condition that would change the view. Show that the record carries an issuer baseline and can be reviewed later; do not describe the thesis as an automated recommendation.
 
 ## Closing line
 
