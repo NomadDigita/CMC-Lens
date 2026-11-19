@@ -886,6 +886,14 @@ async function refreshAuthSession(){
 
 async function handleAuthCallback(){
   const url=new URL(location.href),hash=new URLSearchParams(location.hash.slice(1));
+  const callbackError=url.searchParams.get("error_description")||url.searchParams.get("error")||hash.get("error_description")||hash.get("error");
+  if(callbackError){
+    for(const key of ["error","error_code","error_description","error_uri"])url.searchParams.delete(key);
+    url.hash="";
+    history.replaceState({},"",url.pathname+url.search);
+    toast(callbackError.replace(/\+/g," ").slice(0,180),true);
+    return;
+  }
   const tokenHash=url.searchParams.get("token_hash"),type=url.searchParams.get("type");
   if(tokenHash&&["signup","magiclink","email"].includes(type)){
     const session=await authRequest("verify",{token_hash:tokenHash,type});setAuthSession(session);url.searchParams.delete("token_hash");url.searchParams.delete("type");history.replaceState({},"",url.pathname+url.search+url.hash);toast("Email verified. Your workspace is connected.");
@@ -919,8 +927,16 @@ function authForm(step="email"){
   </div>`);
   document.getElementById("auth-cancel").addEventListener("click",closeModal);
   const googleButton=document.getElementById("auth-google");
-  if(googleButton)googleButton.addEventListener("click",()=>{
+  if(googleButton)googleButton.addEventListener("click",async()=>{
     if(!state.auth.configured){toast("Account sync is not configured for this deployment yet.",true);return;}
+    googleButton.disabled=true;
+    try{
+      const settingsResponse=await fetch(`${state.auth.url.replace(/\/$/,"")}/auth/v1/settings`,{headers:{apikey:state.auth.publishableKey}});
+      if(settingsResponse.ok){
+        const settings=await settingsResponse.json();
+        if(settings.external&&settings.external.google===false){toast("Google sign-in is not enabled for this workspace yet. Use email code for now.",true);googleButton.disabled=false;return;}
+      }
+    }catch{}
     const redirectTo=`${location.origin}/`;
     const authorizeUrl=`${state.auth.url.replace(/\/$/,"")}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectTo)}`;
     location.assign(authorizeUrl);
