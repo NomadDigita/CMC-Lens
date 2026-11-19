@@ -368,3 +368,6 @@ html[data-theme="light"] .primary-metric{background:radial-gradient(ellipse at 9
   .rwa-footer{flex-direction:column}
 }
 @media(prefers-reduced-motion:reduce){.rwa-row{transition:none}}
+
+/* Preserve the stacked research story at phone widths after later desktop refinements. */
+@media(max-width:760px){.research-focus{grid-template-columns:minmax(0,1fr)}}
