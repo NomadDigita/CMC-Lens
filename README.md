@@ -53,7 +53,7 @@ The current event, submission checklist, verified live API evidence, honest limi
 
 ## Data, privacy, and safety
 
-- Every CMC data view includes CMC attribution.
+- Market Pulse, Explore, Market Atlas, Compare, thesis records, and asset dossiers carry visible CoinMarketCap attribution when showing CMC data.
 - The Atlas is a top-100 sample, not the entire market; peer means are descriptive and equal-weighted.
 - Missing quotes and missing category peer samples remain missing.
 - Signed-in research is scoped to the authenticated Supabase user; guest drafts remain local.
