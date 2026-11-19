@@ -31,6 +31,7 @@ const state = {
   historyPending: {},
   atlas: { category: "all", cap: "all", hideStablecoins: true, mode: "map", selected: [], activeId: null },
   currentAsset: null,
+  rwa: { assets: [], selectedId: null, detail: null, filter: "all", query: "", mode: "demo", loading: false, loadedAt: 0 },
   auth: { configured: false, url: null, publishableKey: null, session: null, user: null, pendingEmail: null, syncing: false, syncRequested: false, syncEpoch: 0, sessionEpoch: 0, syncJob: null }
 };
 
@@ -76,7 +77,17 @@ function renderCategoryChart() {
 
 function renderMovements() {
   const rows = [...state.data.assets].filter(a => a.symbol !== "USDC" && a.symbol !== "USDT").sort((a, b) => Math.abs(b.change24h) - Math.abs(a.change24h)).slice(0, 4);
-  document.getElementById("movement-list").innerHTML = rows.map(a => `<div class="movement-row" data-asset="${escapeHtml(a.symbol)}" tabindex="0" role="button" aria-label="Open ${escapeHtml(a.name)} research"><div class="asset-cell"><span class="coin-icon" style="--coin-bg:${a.color}20;--coin-fg:${a.color}">${escapeHtml(a.symbol.slice(0, 1))}</span><span class="asset-name-wrap"><span class="asset-name">${escapeHtml(a.name)}</span><small class="asset-symbol">${escapeHtml(a.symbol)}</small></span></div><span class="move-value ${hasNumericValue(a.change24h) ? (Number(a.change24h) >= 0 ? "up" : "down") : ""}">${fmtOptionalPercent(a.change24h)}</span><span class="peer-context"><span class="peer-bar"><i style="--peer:${a.peerDelta}%"></i></span><span class="peer-text">${escapeHtml(a.peers)}</span></span><span class="row-arrow">↗</span></div>`).join("");
+  document.getElementById("movement-list").innerHTML = rows.map(a => {
+    const logoId = String(a.id || "").replace(/[^0-9]/g, "");
+    const fallback = escapeHtml((a.symbol || "?").slice(0, 1));
+    const logo = logoId ? `<img src="https://s2.coinmarketcap.com/static/img/coins/64x64/${logoId}.png" alt="" loading="lazy" decoding="async" />` : fallback;
+    return `<div class="movement-row" data-asset="${escapeHtml(a.symbol)}" tabindex="0" role="button" aria-label="Open ${escapeHtml(a.name)} research"><div class="asset-cell"><span class="coin-icon" data-fallback="${fallback}" style="--coin-bg:${a.color}20;--coin-fg:${a.color}">${logo}</span><span class="asset-name-wrap"><span class="asset-name">${escapeHtml(a.name)}</span><small class="asset-symbol">${escapeHtml(a.symbol)}</small></span></div><span class="move-value ${hasNumericValue(a.change24h) ? (Number(a.change24h) >= 0 ? "up" : "down") : ""}">${fmtOptionalPercent(a.change24h)}</span><span class="peer-context"><span class="peer-bar"><i style="--peer:${a.peerDelta}%"></i></span><span class="peer-text">${escapeHtml(a.peers)}</span></span><span class="row-arrow">↗</span></div>`;
+  }).join("");
+  document.querySelectorAll(".coin-icon img").forEach(img => img.addEventListener("error", () => {
+    const icon = img.parentElement;
+    icon.textContent = icon.dataset.fallback || "?";
+    icon.classList.add("coin-icon-fallback");
+  }, { once: true }));
   document.querySelectorAll(".movement-row").forEach(el => {
     el.addEventListener("click", () => showAsset(el.dataset.asset));
     el.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); showAsset(el.dataset.asset); } });
@@ -150,7 +161,22 @@ function render() {
   const capChangeAvailable = g.marketCapChange24h !== null && g.marketCapChange24h !== undefined && Number.isFinite(Number(g.marketCapChange24h));
   capChange.className = `metric-change ${capChangeAvailable ? (g.marketCapChange24h >= 0 ? "up" : "down") : ""}`;
   capChange.innerHTML = capChangeAvailable ? `<span>${g.marketCapChange24h >= 0 ? "↗" : "↘"}</span> ${fmtPercent(g.marketCapChange24h)}` : "24h change unavailable";
-  document.getElementById("btc-dominance").innerHTML = g.btcDominance !== null && g.btcDominance !== undefined && Number.isFinite(Number(g.btcDominance)) ? `${Number(g.btcDominance).toFixed(1)}<span>%</span>` : "—";
+  const btcDominance = hasNumericValue(g.btcDominance) ? Number(g.btcDominance) : null;
+  document.getElementById("btc-dominance").innerHTML = btcDominance !== null ? `${btcDominance.toFixed(1)}<span>%</span>` : "—";
+  const dominanceBar = document.querySelector(".dominance-bar");
+  if (dominanceBar) {
+    const fill = dominanceBar.querySelector("span"), marker = dominanceBar.querySelector("i");
+    if (btcDominance !== null) {
+      const percent = Math.max(0, Math.min(100, btcDominance));
+      fill.style.width = percent + "%";
+      marker.style.left = percent + "%";
+      dominanceBar.setAttribute("aria-label", "Bitcoin dominance " + percent.toFixed(1) + "%");
+    } else {
+      fill.style.width = "0%";
+      marker.style.display = "none";
+      dominanceBar.setAttribute("aria-label", "Bitcoin dominance unavailable");
+    }
+  }
   const btc = document.getElementById("btc-change");
   const btcChangeAvailable = g.btcDominanceChange24h !== null && g.btcDominanceChange24h !== undefined && Number.isFinite(Number(g.btcDominanceChange24h));
   btc.className = `metric-change ${btcChangeAvailable ? (g.btcDominanceChange24h >= 0 ? "up" : "down") : ""}`;
@@ -364,15 +390,125 @@ function carryAtlasSelectionToCompare(startThesis=false){
   renderCompare();
 }
 
+function rwaQuote(asset) {
+  return Array.isArray(asset?.quotes) ? asset.quotes.find(q=>q.symbol==="USD")||asset.quotes[0]||{} : {};
+}
+function rwaMetric(asset,field) {
+  const value=asset?.[field] ?? rwaQuote(asset)?.[field];
+  return value===null||value===undefined||!Number.isFinite(Number(value))?null:Number(value);
+}
+function rwaAssets() { return state.rwa.assets.filter(asset=>asset?.has_tokens!==false); }
+function renderRwa() {
+  const all=rwaAssets();
+  const query=state.rwa.query.trim().toLowerCase();
+  const rows=all.filter(asset=>{
+    const type=String(asset.asset_type||"").toLowerCase();
+    return (state.rwa.filter==="all"||type===state.rwa.filter)
+      && (!query||String(asset.name||"").toLowerCase().includes(query)||String(asset.symbol||"").toLowerCase().includes(query));
+  });
+  const totalCap=all.reduce((sum,a)=>sum+(rwaMetric(a,"tokenized_market_cap")||0),0);
+  const totalVol=all.reduce((sum,a)=>sum+(rwaMetric(a,"tokenized_volume_24h")||0),0);
+  document.getElementById("rwa-total").textContent=all.length?all.length.toLocaleString():"—";
+  document.getElementById("rwa-cap").textContent=all.length?money(totalCap,1):"—";
+  document.getElementById("rwa-volume").textContent=all.length?money(totalVol,1):"—";
+  document.getElementById("rwa-result-count").textContent=rows.length+" assets";
+  const status=document.getElementById("rwa-source-status");
+  status.textContent=state.rwa.mode==="live"?"Live CoinMarketCap RWA data · "+new Date(state.rwa.loadedAt).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"}):"Illustrative sample · not live CMC data";
+  document.getElementById("rwa-status-dot").classList.toggle("live",state.rwa.mode==="live");
+  const host=document.getElementById("rwa-list");
+  host.innerHTML=rows.length?rows.map(asset=>{
+    const id=String(asset.rwa_id||"");
+    const price=rwaMetric(asset,"average_tokenized_price");
+    const cap=rwaMetric(asset,"tokenized_market_cap");
+    const volume=rwaMetric(asset,"tokenized_volume_24h");
+    const issuerCount=Array.isArray(asset.tokens)?new Set(asset.tokens.map(t=>t.issuer_name).filter(Boolean)).size:null;
+    const type=String(asset.asset_type||"asset").replace(/_/g," ");
+    const badge=type==="stock"?"STOCK":type.toUpperCase();
+    return `<button class="rwa-row ${state.rwa.selectedId===id?"selected":""}" data-rwa-id="${escapeHtml(id)}" aria-label="Inspect ${escapeHtml(asset.name||asset.symbol)} tokenized market">
+      <span class="rwa-underlying"><span class="rwa-asset-mark">${escapeHtml((asset.symbol||asset.name||"R").slice(0,1))}</span><span><strong>${escapeHtml(asset.name||asset.symbol||"Unnamed asset")}</strong><small>${escapeHtml(asset.symbol||"")} · ${escapeHtml(badge)}</small></span></span>
+      <span class="rwa-price">${price===null?"—":money(price,price<1?4:2)}<small>${cap===null?"cap unavailable":money(cap,1)+" cap"}</small></span>
+      <span class="rwa-volume">${volume===null?"—":money(volume,1)}<small>24h volume</small></span>
+      <span class="rwa-issuer-count">${issuerCount===null?"Open →":issuerCount+" issuers"}<small>${Array.isArray(asset.tokens)?asset.tokens.length+" tokens":"View issuers"}</small></span>
+    </button>`;
+  }).join(""):`<div class="rwa-empty">${state.rwa.loading?"Loading CMC asset coverage…":"No matching tokenized assets. Try another search or filter."}</div>`;
+  host.querySelectorAll("[data-rwa-id]").forEach(button=>button.addEventListener("click",()=>loadRwaAsset(button.dataset.rwaId)));
+}
+async function loadRwa() {
+  if(state.rwa.loading)return;
+  state.rwa.loading=true;
+  document.getElementById("rwa-list").innerHTML='<div class="rwa-empty">Loading CMC asset coverage…</div>';
+  try{
+    const response=await fetch("/api/market?view=rwa",{headers:{Accept:"application/json"},cache:"no-store"});
+    const payload=await response.json();
+    if(!response.ok)throw new Error(payload.error||"RWA data is unavailable.");
+    state.rwa.assets=Array.isArray(payload.assets)?payload.assets:[];
+    state.rwa.mode=payload.mode||"demo";
+    state.rwa.loadedAt=Date.now();
+    renderRwa();
+    if(state.rwa.selectedId)await loadRwaAsset(state.rwa.selectedId);
+  }catch(error){
+    document.getElementById("rwa-source-status").textContent="CMC RWA data unavailable";
+    document.getElementById("rwa-list").innerHTML='<div class="rwa-empty">Could not load RWA data. Refresh to retry.</div>';
+    toast(error.message||"Could not load CMC RWA data.",true);
+  }finally{state.rwa.loading=false;}
+}
+async function loadRwaAsset(id) {
+  if(!/^\d{1,12}$/.test(String(id)))return;
+  state.rwa.selectedId=String(id);
+  renderRwa();
+  const detail=document.getElementById("rwa-detail");
+  detail.innerHTML='<div class="rwa-empty-detail"><span class="rwa-orbit" aria-hidden="true">◎</span><div class="panel-kicker">CMC ASSET RECORD</div><h2>Loading issuer data…</h2></div>';
+  try{
+    const response=await fetch("/api/market?view=rwa-asset&id="+encodeURIComponent(id),{headers:{Accept:"application/json"},cache:"no-store"});
+    const payload=await response.json();
+    if(!response.ok)throw new Error(payload.error||"Asset details are unavailable.");
+    state.rwa.detail=payload;
+    renderRwaDetail();
+    renderRwa();
+  }catch(error){
+    detail.innerHTML='<div class="rwa-empty-detail"><div class="panel-kicker">CMC ASSET RECORD</div><h2>Issuer data unavailable.</h2><p>Refresh the asset record to retry.</p></div>';
+  }
+}
+function renderRwaDetail() {
+  const payload=state.rwa.detail,asset=payload?.asset,metadata=payload?.metadata;
+  if(!asset)return;
+  const average=rwaMetric(asset,"average_tokenized_price");
+  const tokens=Array.isArray(asset.tokens)?asset.tokens:[];
+  const markets=Array.isArray(asset.tradfi_markets)?asset.tradfi_markets:[];
+  const about=metadata?.about||{};
+  const description=about.description||"CMC tracks this underlying asset and the tokenized products associated with it.";
+  const logoUrl=typeof about.logo==="string"&&about.logo.startsWith("https://")?about.logo:"";
+  const assetMark=logoUrl?`<img src="${escapeHtml(logoUrl)}" alt="" loading="lazy" />`:escapeHtml((asset.symbol||asset.name||"R").slice(0,1));
+  const tokenRows=tokens.map(token=>{
+    const price=Number(token.price),deviation=average&&Number.isFinite(price)?(price/average-1)*100:null;
+    const cryptoId=String(token.crypto_id||"").replace(/[^0-9]/g,"");
+    const icon=cryptoId?`<img src="https://s2.coinmarketcap.com/static/img/coins/64x64/${cryptoId}.png" alt="" loading="lazy" decoding="async" />`:escapeHtml((token.symbol||"T").slice(0,1));
+    return `<div class="rwa-token"><span class="rwa-token-icon" data-fallback="${escapeHtml((token.symbol||"T").slice(0,1))}">${icon}</span><span class="rwa-token-name"><strong>${escapeHtml(token.name||token.symbol||"Token")}</strong><small>${escapeHtml(token.symbol||"")}</small></span><span class="rwa-token-data"><strong>${Number.isFinite(price)?money(price,price<1?5:2):"—"}</strong><small>CMC tokenized avg ${deviation===null?"—":(deviation>=0?"+":"")+deviation.toFixed(2)+"%"}</small></span><span class="rwa-token-data"><strong>${money(token.volume_24h,1)}</strong><small>24h volume</small></span><span class="rwa-token-issuer">${escapeHtml(token.issuer_name||"Issuer unavailable")}</span></div>`;
+  }).join("");
+  document.getElementById("rwa-detail").innerHTML=`<div class="rwa-detail-head"><span class="rwa-detail-mark">${assetMark}</span><div><div class="panel-kicker">CMC UNDERLYING · ${escapeHtml(String(asset.asset_type||"asset").toUpperCase())}</div><h2>${escapeHtml(asset.name||asset.symbol)}</h2><p>${escapeHtml(asset.symbol||"")} · ${tokens.length} tokenized instruments · rank ${asset.rwa_rank||"—"}</p></div></div>
+    <p class="rwa-description">${escapeHtml(description)}</p>
+    <div class="rwa-average"><span><small>CMC TOKENIZED AVERAGE</small><strong>${average===null?"—":money(average,average<1?4:2)}</strong></span><span><small>REPORTED TOKENIZED CAP</small><strong>${money(rwaMetric(asset,"tokenized_market_cap"),1)}</strong></span></div>
+    <div class="rwa-tokens-heading"><div><div class="panel-kicker">ISSUER MAP</div><h3>Tokenized instruments</h3></div><span>${tokens.length} tracked</span></div>
+    <div class="rwa-token-head"><span>INSTRUMENT</span><span>PRICE DISPERSION</span><span>LIQUIDITY</span><span>ISSUER</span></div>
+    <div class="rwa-token-list">${tokenRows||'<div class="rwa-empty">No token instruments are listed for this underlying.</div>'}</div>
+    <div class="rwa-market-note"><span class="method-mark">ƒ</span><span><strong>Read this carefully</strong><small>Dispersion compares each token price to CMC’s aggregate tokenized average. It is not a redemption guarantee or a quote for the underlying stock.</small></span></div>
+    <div class="rwa-tradfi">${markets.length?`<span class="panel-kicker">LINKED TRADFI MARKETS</span><div>${markets.map(m=>`<span class="rwa-market-chip">${escapeHtml(m.exchange?.name||"Market")} · ${escapeHtml(m.ticker||asset.symbol||"")}</span>`).join("")}</div>`:""}</div>`;
+  document.querySelectorAll(".rwa-token-icon img").forEach(img=>img.addEventListener("error",()=>{
+    const icon=img.parentElement;icon.textContent=icon.dataset.fallback||"?";icon.classList.add("fallback");
+  },{once:true}));
+  const assetLogo=document.querySelector(".rwa-detail-mark img");
+  if(assetLogo)assetLogo.addEventListener("error",()=>{assetLogo.parentElement.textContent=(asset.symbol||"R").slice(0,1);},{once:true});
+}
 function switchView(view) {
   state.view = view;
   document.querySelectorAll(".page-view").forEach(el => el.classList.remove("active"));
   const target = document.getElementById(`view-${view}`); if (target) target.classList.add("active");
   document.querySelectorAll(".nav-item").forEach(el => el.classList.toggle("active", el.dataset.view === view));
-  document.getElementById("breadcrumb-current").textContent = ({pulse:"Market pulse",explore:"Explore assets",compare:"Compare",atlas:"Market Atlas",theses:"Thesis log",settings:"Settings"})[view] || "Workspace";
+  document.getElementById("breadcrumb-current").textContent = ({pulse:"Market pulse",explore:"Explore assets",compare:"Compare",atlas:"Market Atlas",rwa:"RWA desk",theses:"Thesis log",settings:"Settings"})[view] || "Workspace";
   document.getElementById("sidebar").classList.remove("open");
   if (view === "compare") loadCompareHistory();
   if (view === "atlas") renderAtlas();
+  if (view === "rwa" && !state.rwa.loading && (!state.rwa.loadedAt || Date.now()-state.rwa.loadedAt>60_000)) loadRwa();
   window.scrollTo({top:0,behavior:"smooth"});
 }
 
@@ -886,6 +1022,14 @@ async function refreshAuthSession(){
 
 async function handleAuthCallback(){
   const url=new URL(location.href),hash=new URLSearchParams(location.hash.slice(1));
+  const callbackError=url.searchParams.get("error_description")||url.searchParams.get("error")||hash.get("error_description")||hash.get("error");
+  if(callbackError){
+    for(const key of ["error","error_code","error_description","error_uri"])url.searchParams.delete(key);
+    url.hash="";
+    history.replaceState({},"",url.pathname+url.search);
+    toast(callbackError.replace(/\+/g," ").slice(0,180),true);
+    return;
+  }
   const tokenHash=url.searchParams.get("token_hash"),type=url.searchParams.get("type");
   if(tokenHash&&["signup","magiclink","email"].includes(type)){
     const session=await authRequest("verify",{token_hash:tokenHash,type});setAuthSession(session);url.searchParams.delete("token_hash");url.searchParams.delete("type");history.replaceState({},"",url.pathname+url.search+url.hash);toast("Email verified. Your workspace is connected.");
@@ -897,15 +1041,49 @@ async function handleAuthCallback(){
 
 function authForm(step="email"){
   const email=state.auth.pendingEmail||"";
-  openModal(`<div class="modal-head"><div><div class="panel-kicker">PRIVATE RESEARCH WORKSPACE</div><h2 id="modal-title">${step==="email"?"Connect your workspace":"Check your email"}</h2><p>${step==="email"?"Use a secure email link to sync your thesis records across devices.":`We sent a sign-in message to ${escapeHtml(email)}. Enter its code, or open the link in the email.`}</p></div><button id="modal-close" class="modal-close" aria-label="Close">×</button></div><form class="thesis-form" id="auth-form">${step==="email"?`<div class="field"><label for="auth-email">EMAIL ADDRESS</label><input id="auth-email" name="email" type="email" autocomplete="email" placeholder="you@example.com" required /></div>`:`<div class="field"><label for="auth-code">EMAIL CODE</label><input id="auth-code" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="Enter the code from your email" required /></div>`}<div class="form-actions"><button type="button" class="form-cancel" id="auth-cancel">Cancel</button><button type="submit" class="primary-button">${step==="email"?"Send sign-in email":"Verify and sync"} <span>→</span></button></div></form>`);
+  const isEmailStep=step==="email";
+  openModal(`<div class="auth-modal">
+    <div class="auth-mark" aria-hidden="true"><svg viewBox="0 0 36 36"><path d="M18 3.7a14.3 14.3 0 1 0 14.3 14.3A14.3 14.3 0 0 0 18 3.7Z"/><path d="m23.8 10.4-3.2 10.6-10.5 4.6 3.3-10.5 10.4-4.7Z"/><circle cx="18" cy="18" r="2"/></svg></div>
+    <div class="modal-head auth-modal-head">
+      <div><div class="panel-kicker">YOUR RESEARCH, KEPT IN SYNC</div><h2 id="modal-title">${isEmailStep?"Connect your workspace":"Check your email"}</h2><p>${isEmailStep?"Keep your thesis notes and evidence available across devices.":`We sent a sign-in message to ${escapeHtml(email)}. Enter its code below.`}</p></div>
+      <button id="modal-close" class="modal-close" aria-label="Close">×</button>
+    </div>
+    ${isEmailStep?`<div class="auth-provider-stack">
+      <button type="button" class="auth-google-button" id="auth-google">
+        <svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#4285F4" d="M43.6 24.5c0-1.4-.1-2.8-.4-4.1H24v7.8h11a9.5 9.5 0 0 1-4.1 6.2v5h6.7c3.9-3.6 6-8.8 6-14.9Z"/><path fill="#34A853" d="M24 44c5.4 0 9.9-1.8 13.2-4.8l-6.7-5c-1.8 1.2-4 2-6.5 2-5 0-9.2-3.4-10.7-8H6.4v5.2A20 20 0 0 0 24 44Z"/><path fill="#FBBC05" d="M13.3 28.2a12 12 0 0 1 0-7.7v-5.2H6.4a20 20 0 0 0 0 18.1l6.9-5.2Z"/><path fill="#EA4335" d="M24 12.5c2.9 0 5.5 1 7.5 3l5.8-5.8C33.9 6.4 29.4 4 24 4A20 20 0 0 0 6.4 15.3l6.9 5.2c1.5-4.6 5.7-8 10.7-8Z"/></svg>
+        <span>Continue with Google</span><span class="auth-button-arrow">↗</span>
+      </button>
+      <div class="auth-divider"><span>or continue with email</span></div>
+    </div>`:''}
+    <form class="thesis-form auth-form" id="auth-form">
+      ${isEmailStep?`<div class="field"><label for="auth-email">EMAIL ADDRESS</label><input id="auth-email" name="email" type="email" autocomplete="email" placeholder="you@example.com" required /></div>`:`<div class="field"><label for="auth-code">EMAIL CODE</label><input id="auth-code" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="Enter the code from your email" required /></div>`}
+      <div class="form-actions"><button type="button" class="form-cancel" id="auth-cancel">Cancel</button><button type="submit" class="primary-button">${isEmailStep?"Send sign-in code":"Verify and sync"} <span>→</span></button></div>
+    </form>
+    <p class="auth-privacy-note">Your workspace stays private. CMC API credentials are never used for sign-in.</p>
+  </div>`);
   document.getElementById("auth-cancel").addEventListener("click",closeModal);
+  const googleButton=document.getElementById("auth-google");
+  if(googleButton)googleButton.addEventListener("click",async()=>{
+    if(!state.auth.configured){toast("Account sync is not configured for this deployment yet.",true);return;}
+    googleButton.disabled=true;
+    try{
+      const settingsResponse=await fetch(`${state.auth.url.replace(/\/$/,"")}/auth/v1/settings`,{headers:{apikey:state.auth.publishableKey}});
+      if(settingsResponse.ok){
+        const settings=await settingsResponse.json();
+        if(settings.external&&settings.external.google===false){toast("Google sign-in is not enabled for this workspace yet. Use email code for now.",true);googleButton.disabled=false;return;}
+      }
+    }catch{}
+    const redirectTo=`${location.origin}/`;
+    const authorizeUrl=`${state.auth.url.replace(/\/$/,"")}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectTo)}`;
+    location.assign(authorizeUrl);
+  });
   document.getElementById("auth-form").addEventListener("submit",async e=>{
     e.preventDefault();const submit=e.currentTarget.querySelector('[type="submit"]');submit.disabled=true;
     try{
-      if(step==="email"){
+      if(isEmailStep){
         const address=new FormData(e.currentTarget).get("email").trim().toLowerCase();
         await authRequest(`otp?redirect_to=${encodeURIComponent(`${location.origin}/`)}`,{email:address,create_user:true});
-        state.auth.pendingEmail=address;toast("Sign-in email sent.");authForm("code");
+        state.auth.pendingEmail=address;toast("Sign-in code sent.");authForm("code");
       }else{
         const code=new FormData(e.currentTarget).get("code").trim();
         const session=await authRequest("verify",{email:state.auth.pendingEmail,token:code,type:"email"});
@@ -1086,6 +1264,13 @@ function setup() {
   const savedTheme=localStorage.getItem("cmc-lens-theme");if(savedTheme==="light"||savedTheme==="dark")document.documentElement.dataset.theme=savedTheme;
   document.querySelectorAll("[data-view]").forEach(el=>el.addEventListener("click",()=>switchView(el.dataset.view)));
   document.getElementById("theme-toggle").addEventListener("click",()=>setTheme(document.documentElement.dataset.theme==="dark"?"light":"dark"));
+  document.getElementById("rwa-refresh").addEventListener("click",()=>{state.rwa.loadedAt=0;loadRwa();});
+  document.getElementById("rwa-search").addEventListener("input",e=>{state.rwa.query=e.target.value;renderRwa();});
+  document.querySelectorAll("[data-rwa-type]").forEach(button=>button.addEventListener("click",()=>{
+    state.rwa.filter=button.dataset.rwaType;
+    document.querySelectorAll("[data-rwa-type]").forEach(item=>item.classList.toggle("selected",item===button));
+    renderRwa();
+  }));
   document.querySelectorAll("[data-set-theme]").forEach(el=>el.addEventListener("click",()=>setTheme(el.dataset.setTheme)));
   document.querySelectorAll("[data-thesis-filter]").forEach(el=>el.addEventListener("click",()=>{state.activeFilter=el.dataset.thesisFilter;document.querySelectorAll("[data-thesis-filter]").forEach(x=>x.classList.toggle("selected",x===el));renderThesesPage();}));
   ["new-thesis","new-thesis-alt","explore-new-thesis","theses-new"].forEach(id=>document.getElementById(id).addEventListener("click",()=>thesisForm()));

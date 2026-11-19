@@ -52,7 +52,7 @@ function setCached(key, value) {
 }
 
 function safeReceiptParams(params={}){
-  const allowed=new Set(["convert","start","limit","sort","sort_dir","aux","id","listing_status","time_start","time_end","interval","count","skip_invalid"]);
+  const allowed=new Set(["convert","start","limit","sort","sort_dir","aux","id","rwa_id","listing_status","time_start","time_end","interval","count","skip_invalid"]);
   return Object.fromEntries(Object.entries(params).filter(([key,value])=>allowed.has(key)&&value!==undefined&&value!==null&&value!=="").map(([key,value])=>[key,String(value).slice(0,120)]));
 }
 
@@ -346,6 +346,44 @@ async function liveOverview(receiptSink=[]) {
   return result;
 }
 
+async function liveRwaList(receiptSink=[]) {
+  const cached=getCached("rwa-list-v1",5*60*1000);
+  if(cached){
+    const receipts=cachedSourceReceipts(cached.sourceReceipts||[]);
+    receiptSink.push(...receipts);
+    return {...cached,sourceReceipts:receipts};
+  }
+  const sourceReceipts=[];
+  const data=await cmc("/v5/real-world-assets/assets/list",{start:1,limit:100,convert:"USD"},9000,sourceReceipts);
+  const result={assets:Array.isArray(data?.rwa_assets)?data.rwa_assets:[],total:Number(data?.total_size)||0,hasMore:data?.has_more===true};
+  result.sourceReceipts=sourceReceipts;
+  receiptSink.push(...sourceReceipts);
+  setCached("rwa-list-v1",result);
+  return result;
+}
+
+async function liveRwaAsset(id,receiptSink=[]) {
+  const cacheKey="rwa-asset-v1:"+id;
+  const cached=getCached(cacheKey,5*60*1000);
+  if(cached){
+    const receipts=cachedSourceReceipts(cached.sourceReceipts||[]);
+    receiptSink.push(...receipts);
+    return {...cached,sourceReceipts:receipts};
+  }
+  const sourceReceipts=[];
+  const [quotes,metadata]=await Promise.all([
+    cmc("/v5/real-world-assets/quotes/latest",{rwa_id:id,convert:"USD"},9000,sourceReceipts),
+    cmc("/v5/real-world-assets/info",{rwa_id:id},9000,sourceReceipts)
+  ]);
+  const asset=Array.isArray(quotes?.rwa_assets)?quotes.rwa_assets[0]:null;
+  const info=Array.isArray(metadata?.rwa_assets)?metadata.rwa_assets[0]:null;
+  if(!asset)return null;
+  const result={asset,metadata:info,sourceReceipts};
+  receiptSink.push(...sourceReceipts);
+  setCached(cacheKey,result);
+  return result;
+}
+
 async function liveAsset(id, receiptSink=[]) {
   const result = await cmc("/v3/cryptocurrency/quotes/latest", { id, convert: "USD", aux: "tags" }, 9000, receiptSink);
   const item = Array.isArray(result) ? result.find(row => String(row.id) === String(id)) || result[0] : result?.[id] || Object.values(result || {})[0];
@@ -460,6 +498,12 @@ module.exports = async function handler(req, res) {
       const series = demoHistory(req.query.id, String(req.query.period || "7D"));
       return series ? reply(res, 200, { mode: "demo", illustrative: true, series, sourceReceipts: [] }) : reply(res, 404, { error: "ASSET_NOT_FOUND" });
     }
+    if (view === "rwa") return reply(res, 200, { mode: "demo", assets: [{"rwa_id":2,"rwa_rank":2,"name":"NVIDIA","symbol":"NVDA","asset_type":"stock","has_tokens":true,"average_tokenized_price":226.46,"tokenized_market_cap":117414402,"tokenized_volume_24h":79320399,"last_updated":"2026-11-18T10:00:00.000Z"},{"rwa_id":1,"rwa_rank":1,"name":"Gold","symbol":"GOLD","asset_type":"commodity","has_tokens":true,"average_tokenized_price":4399.67,"tokenized_market_cap":4691165858,"tokenized_volume_24h":386677568,"last_updated":"2026-11-18T10:00:00.000Z"},{"rwa_id":9,"rwa_rank":9,"name":"SpaceX","symbol":"SPACEX","asset_type":"stock","has_tokens":true,"average_tokenized_price":205.1,"tokenized_market_cap":82400000,"tokenized_volume_24h":15200000,"last_updated":"2026-11-18T10:00:00.000Z"}], total: 3, hasMore: false, source: { provider: "Illustrative demo sample", endpoints: [] }, sourceReceipts: [] });
+    if (view === "rwa-asset") {
+      const asset = [{"rwa_id":2,"rwa_rank":2,"name":"NVIDIA","symbol":"NVDA","asset_type":"stock","has_tokens":true,"average_tokenized_price":226.46,"tokenized_market_cap":117414402,"tokenized_volume_24h":79320399,"last_updated":"2026-11-18T10:00:00.000Z"},{"rwa_id":1,"rwa_rank":1,"name":"Gold","symbol":"GOLD","asset_type":"commodity","has_tokens":true,"average_tokenized_price":4399.67,"tokenized_market_cap":4691165858,"tokenized_volume_24h":386677568,"last_updated":"2026-11-18T10:00:00.000Z"},{"rwa_id":9,"rwa_rank":9,"name":"SpaceX","symbol":"SPACEX","asset_type":"stock","has_tokens":true,"average_tokenized_price":205.1,"tokenized_market_cap":82400000,"tokenized_volume_24h":15200000,"last_updated":"2026-11-18T10:00:00.000Z"}].find(item => String(item.rwa_id) === String(req.query.id || ""));
+      const details = asset && asset.symbol === "NVDA" ? { tokens: [{ symbol: "NVDAX", name: "NVIDIA tokenized stock (xStock)", price: 226.33, issuer_name: "Backed Assets", market_cap: 39526066, volume_24h: 12187859 }, { symbol: "NVDAon", name: "NVIDIA Tokenized Stock (Ondo)", price: 226.50, issuer_name: "Ondo Assets", market_cap: 38222994, volume_24h: 2634471 }], tradfi_markets: [{ ticker: "NVDA", exchange: { name: "Nasdaq" } }] } : { tokens: [], tradfi_markets: [] };
+      return asset ? reply(res, 200, { mode: "demo", asset: { ...asset, ...details }, metadata: { about: { description: "Illustrative sample only." } }, sourceReceipts: [] }) : reply(res, 404, { error: "RWA_NOT_FOUND" });
+    }
     if (view === "window-history") return reply(res, 200, { mode: "demo", series: {}, sourceReceipts: [] });
     if (view === "search") {
       const q = String(req.query.q || "").trim().toLowerCase();
@@ -470,6 +514,16 @@ module.exports = async function handler(req, res) {
 
   const sourceReceipts=[];
   try {
+    if (view === "rwa") {
+      const result=await liveRwaList(sourceReceipts);
+      return reply(res,200,{mode:"live",retrievedAt:new Date().toISOString(),source:{provider:"CoinMarketCap",endpoint:"/v5/real-world-assets/assets/list",attribution:"Data provided by CoinMarketCap.com"},...result,sourceReceipts});
+    }
+    if (view === "rwa-asset") {
+      const id=String(req.query.id||"");
+      if(!/^\d{1,12}$/.test(id))return reply(res,400,{error:"INVALID_RWA_ID",sourceReceipts});
+      const result=await liveRwaAsset(id,sourceReceipts);
+      return result?reply(res,200,{mode:"live",retrievedAt:new Date().toISOString(),source:{provider:"CoinMarketCap",endpoints:["/v5/real-world-assets/quotes/latest","/v5/real-world-assets/info"],attribution:"Data provided by CoinMarketCap.com"},...result,sourceReceipts}):reply(res,404,{error:"RWA_NOT_FOUND",sourceReceipts});
+    }
     if (view === "asset") {
       const id = String(req.query.id || "");
       if (!/^\d{1,12}$/.test(id)) return reply(res, 400, { error: "INVALID_ASSET_ID", sourceReceipts });

@@ -26,6 +26,7 @@
           <button class="nav-item" data-view="explore"><span class="nav-icon">⌕</span><span>Explore assets</span><kbd>⌘ 2</kbd></button>
           <button class="nav-item" data-view="compare"><span class="nav-icon">◫</span><span>Compare</span><kbd>⌘ 3</kbd></button>
           <button class="nav-item" data-view="atlas"><span class="nav-icon">◎</span><span>Market Atlas</span><kbd>⌘ 4</kbd></button>
+          <button class="nav-item" data-view="rwa"><span class="nav-icon">◉</span><span>RWA desk</span><span class="nav-count" id="rwa-count">New</span></button>
           <button class="nav-item" data-view="theses"><span class="nav-icon">▤</span><span>Thesis log</span><span class="nav-count" id="thesis-count">0</span></button>
         </nav>
 
@@ -58,7 +59,7 @@
 
         <section class="page-view active" id="view-pulse">
           <div class="page-heading pulse-heading">
-            <div><div class="eyebrow"><span class="eyebrow-line"></span><span id="local-date">MARKET RESEARCH</span> <span class="eyebrow-dot">·</span> MARKET CONTEXT</div><h1>Your market,<br /><em>in context.</em></h1><p class="heading-subtitle">The numbers are easy to find. Understanding what moved together is where the work begins.</p></div>
+            <div><div class="eyebrow"><span class="eyebrow-line"></span><span id="local-date">MARKET RESEARCH</span> <span class="eyebrow-dot">·</span> MARKET CONTEXT</div><h1>The market moves.<br /><em>Keep the context.</em></h1><p class="heading-subtitle">Follow what moves together, keep the CMC evidence close, then return to your thesis after the noise fades.</p></div>
             <div class="heading-actions"><button class="quiet-button" id="refresh-data"><span class="refresh-symbol">↻</span> Refresh data</button><button class="primary-button" id="new-thesis"><span>＋</span> Start a thesis</button></div>
           </div>
 
@@ -95,6 +96,34 @@
         </section>
 
         <section class="page-view simple-view" id="view-explore"><div class="page-heading"><div><div class="eyebrow"><span class="eyebrow-line"></span>ASSET RESEARCH</div><h1>Look closer.</h1><p class="heading-subtitle">Start with an asset. Keep the surrounding evidence in view.</p></div><button class="primary-button" id="explore-new-thesis">＋ Start a thesis</button></div><div class="explore-search"><span>⌕</span><input id="asset-search" placeholder="Search a name, symbol, or CMC ID" autocomplete="off"/><kbd>↵</kbd></div><div class="asset-results" id="asset-results"></div><div class="empty-hint">Search results use the CMC asset map when live API access is connected. Demo mode uses a small sample set.</div><footer class="app-footer"><span>Search fields may be incomplete or unavailable.</span><span class="footer-attribution">Data provided by <a href="https://coinmarketcap.com/" target="_blank" rel="noreferrer">CoinMarketCap.com</a></span></footer></section>
+
+        <section class="page-view simple-view rwa-view" id="view-rwa">
+          <div class="page-heading rwa-page-heading">
+            <div><div class="eyebrow"><span class="eyebrow-line"></span>CMC REAL-WORLD ASSETS <span class="eyebrow-dot">·</span> TOKENIZED MARKETS</div><h1>One asset.<br /><em>Every token behind it.</em></h1><p class="heading-subtitle">See the token issuers, prices, and liquidity attached to stocks, commodities, and other real-world assets.</p></div>
+            <button class="quiet-button" id="rwa-refresh" aria-label="Refresh CMC real-world asset data">↻ Refresh RWA data</button>
+          </div>
+          <div class="rwa-source-strip"><span class="status-dot" id="rwa-status-dot"></span><span id="rwa-source-status">CMC data · waiting for first request</span><span class="rwa-endpoints">/v5/real-world-assets · cached responses</span></div>
+          <div class="rwa-stat-grid" id="rwa-summary">
+            <article class="rwa-stat"><span>TRACKED UNDERLYINGS</span><strong id="rwa-total">—</strong><small>Assets with tokenized markets</small></article>
+            <article class="rwa-stat"><span>TOKENIZED MARKET CAP</span><strong id="rwa-cap">—</strong><small>Reported across tracked tokens</small></article>
+            <article class="rwa-stat"><span>24H TOKEN VOLUME</span><strong id="rwa-volume">—</strong><small>CMC aggregated token volume</small></article>
+          </div>
+          <div class="rwa-workspace">
+            <section class="rwa-catalog panel">
+              <div class="panel-heading"><div><div class="panel-kicker">UNDERLYING ASSETS</div><h2>Browse the tokenized market</h2></div><span class="rwa-result-count" id="rwa-result-count">—</span></div>
+              <label class="rwa-search"><span aria-hidden="true">⌕</span><input id="rwa-search" type="search" placeholder="Search stocks, gold, treasuries…" autocomplete="off" /><kbd>⌘ K</kbd></label>
+              <div class="rwa-filter-row" role="group" aria-label="Filter real-world assets">
+                <button class="selected" data-rwa-type="all">All assets</button><button data-rwa-type="stock">Stocks</button><button data-rwa-type="commodity">Commodities</button><button data-rwa-type="etf">Funds &amp; ETFs</button>
+              </div>
+              <div class="rwa-list-heading"><span>UNDERLYING</span><span>TOKENIZED VALUE</span><span>24H VOLUME</span><span>ISSUERS</span></div>
+              <div id="rwa-list" class="rwa-list" aria-live="polite"><div class="rwa-empty">Loading CMC asset coverage…</div></div>
+            </section>
+            <aside class="rwa-detail panel" id="rwa-detail" aria-live="polite">
+              <div class="rwa-empty-detail"><span class="rwa-orbit" aria-hidden="true">◎</span><div class="panel-kicker">TOKENIZED ASSET INTELLIGENCE</div><h2>Choose an underlying.</h2><p>Compare the issuers and tokens CMC tracks, including price dispersion against the tokenized average.</p></div>
+            </aside>
+          </div>
+          <footer class="app-footer rwa-footer"><span>Tokenized prices and liquidity describe tracked on-chain tokens; they do not guarantee redemption or legal ownership of the underlying.</span><span class="footer-attribution">Data provided by <a href="https://coinmarketcap.com/api/documentation/pro-api-reference/real-world-assets/" target="_blank" rel="noreferrer">CoinMarketCap RWA API</a></span></footer>
+        </section>
 
         <section class="page-view simple-view" id="view-atlas">
           <div class="page-heading atlas-page-heading">
@@ -134,7 +163,7 @@
 
         <section class="page-view simple-view" id="view-theses"><div class="page-heading"><div><div class="eyebrow"><span class="eyebrow-line"></span>YOUR RESEARCH MEMORY</div><h1>Thesis log.</h1><p class="heading-subtitle">A dated record of what you thought, what you saw, and what happened next.</p></div><button class="primary-button" id="theses-new">＋ Start a thesis</button></div><div class="thesis-filters"><button class="selected" data-thesis-filter="all">All <span id="filter-all-count">0</span></button><button data-thesis-filter="open">Open <span id="filter-open-count">0</span></button><button data-thesis-filter="review">Ready to review <span id="filter-review-count">0</span></button><button data-thesis-filter="reviewed">Reviewed <span id="filter-reviewed-count">0</span></button></div><div id="theses-page-list" class="theses-page-list"></div><footer class="app-footer"><span>Original notes remain yours; source observations stay attached.</span><span class="footer-attribution">CMC evidence provided by <a href="https://coinmarketcap.com/" target="_blank" rel="noreferrer">CoinMarketCap.com</a></span></footer></section>
 
-        <section class="page-view simple-view" id="view-settings"><div class="page-heading"><div><div class="eyebrow"><span class="eyebrow-line"></span>WORKSPACE</div><h1>Settings.</h1><p class="heading-subtitle">Preferences and data behavior for your research space.</p></div></div><div class="settings-card"><div><strong>Appearance</strong><small>Choose the theme used across your workspace.</small></div><div class="theme-options"><button data-set-theme="dark">◐ &nbsp;Dark</button><button data-set-theme="light">☼ &nbsp;Light</button></div></div><div class="settings-card"><div><strong>Market data</strong><small id="settings-data-status">Sample data is active. Live data is not connected.</small></div><span class="status-pill demo-status" id="settings-data-badge">DEMO</span></div><div class="settings-card"><div><strong>Research storage</strong><small id="storage-status">Saved in this browser. Connect an account to sync your thesis records.</small></div><button class="small-action" id="auth-action">Connect workspace</button></div><div class="settings-note"><span>i</span><p>Your thesis notes remain private in this browser. Email sign-in enables account-backed sync through Supabase. CMC API credentials stay server-side and are never entered here.</p></div></section>
+        <section class="page-view simple-view" id="view-settings"><div class="page-heading"><div><div class="eyebrow"><span class="eyebrow-line"></span>WORKSPACE</div><h1>Settings.</h1><p class="heading-subtitle">Preferences and data behavior for your research space.</p></div></div><div class="settings-card"><div><strong>Appearance</strong><small>Choose the theme used across your workspace.</small></div><div class="theme-options"><button data-set-theme="dark">◐ &nbsp;Dark</button><button data-set-theme="light">☼ &nbsp;Light</button></div></div><div class="settings-card"><div><strong>Market data</strong><small id="settings-data-status">Sample data is active. Live data is not connected.</small></div><span class="status-pill demo-status" id="settings-data-badge">DEMO</span></div><div class="settings-card"><div><strong>Research storage</strong><small id="storage-status">Saved in this browser. Connect an account to sync your thesis records.</small></div><button class="small-action" id="auth-action">Connect workspace</button></div><div class="settings-note"><span>i</span><p>Your thesis notes remain private in this browser. Use Google or an email sign-in code for account-backed sync through Supabase. CMC API credentials stay server-side and are never entered here.</p></div></section>
       </main>
     </div>
 
