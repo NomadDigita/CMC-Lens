@@ -453,7 +453,7 @@ async function loadRwa() {
   }finally{state.rwa.loading=false;}
 }
 async function loadRwaAsset(id) {
-  if(!/^\\d{1,12}$/.test(String(id)))return;
+  if(!/^\d{1,12}$/.test(String(id)))return;
   state.rwa.selectedId=String(id);
   renderRwa();
   const detail=document.getElementById("rwa-detail");
