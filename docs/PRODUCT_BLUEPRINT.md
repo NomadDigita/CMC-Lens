@@ -1,6 +1,6 @@
 # CMC Lens — Product and Engineering Blueprint
 
-**Status:** Approved project direction, planning baseline  
+**Status:** Living product and engineering spec; shipped capabilities are listed in §15  
 **Working product name:** CMC Lens  
 **Product category:** Evidence-first crypto research and thesis review  
 **Primary data source:** CoinMarketCap API  
@@ -384,35 +384,25 @@ CMC attribution will read **“Data provided by CoinMarketCap.com”** and link 
 
 ## 15. Current known state
 
-**Checked: November 18, 2026**
+**Checked: November 19, 2026**
 
-- Repository: `NomadDigita/CMC-Lens`; the product is deployed at [https://cmc-lens.vercel.app](https://cmc-lens.vercel.app).
-- Hosting: a dedicated Vercel project named `cmc-lens` is linked to this repository. The production deployment receives changes from `main`.
-- Database and identity: a separate Supabase project was created in the MigrateOS organization. The existing Tidelight project is not reused. Private research tables use row-level security.
-- CMC credentials: `CMC_PRO_API_KEY` is configured server-side in Vercel Production and is not stored in source control or sent to the browser.
-- Current sign-in: Supabase email one-time-code and magic-link sign-in. Google OAuth is not configured.
-- Market Pulse uses live CMC global metrics and a top-100 listing when the production API is available; otherwise the interface switches to a clearly labeled eight-asset illustrative demo sample. The live overview and asset search carry per-asset quote timestamps. Breadth states its advancing count and denominator.
-- Explore searches CoinMarketCap's active asset map and requests current quotes. Compare lets users search loaded or remote assets, select up to four, and requests matched historical quote series for 7D, 30D, or 90D.
-- Thesis records preserve a baseline, source timestamp, evidence items, user-defined conditions, and append-only reviews. Reviews compare the original baseline with the latest quote when CMC access is available. CMC Lens does not generate buy/sell instructions or a predictive score.
-- Signed-in thesis caches are scoped by Supabase user ID. On first connection, a user can explicitly import guest drafts into their private workspace or keep them local. Signing out returns to guest drafts rather than another account's cache.
-- The interface supports dark and light themes. Sentiment remains unavailable in live mode until a source is integrated and verified; demo sentiment is labeled as illustrative.
-- Still planned: richer source citations and evidence collection, account-management and recovery UX, optional public/shareable research capsules with explicit privacy controls, and hackathon packaging/submission. Do not represent these items as implemented until shipped and verified.
+- Repository: NomadDigita/CMC-Lens; production app: [https://cmc-lens.vercel.app](https://cmc-lens.vercel.app).
+- Hosting: the dedicated Vercel project is linked to the public GitHub repository and deploys from main.
+- Database and identity: a separate Supabase project in the MigrateOS organization backs private research storage and identity. User-owned records use row-level security; historical replay has a server-side shared credit budget.
+- CMC credentials: CMC_PRO_API_KEY is configured as a server-only Vercel Production variable. It is not present in source control or browser code.
+- Production CMC verification at 2026-11-19 05:46 UTC: GET /api/market returned live mode, 100 queried/100 covered/0 missing listings, and successful HTTP 200 receipts for global metrics, Fear & Greed, and listings. This is a point-in-time verification.
+- Market Pulse displays live global context, breadth, source freshness, optional sentiment, and a clearly labeled demo fallback when CMC access is unavailable.
+- Market Atlas is shipped: it explores the top-100-by-market-cap sample with deterministic primary categories, covered peer means, explicit coverage, filters, source inspection, and a keyboard-accessible list. Unclassified assets do not receive fabricated category-relative returns.
+- Explore resolves assets through CMC's map and current quote endpoints. Compare freezes selected CMC IDs and a common period; historical windows are bounded and expose unavailable coverage instead of interpolating it.
+- Thesis records preserve baselines and user-authored rationale; later reviews append dated snapshots. Signed-in sync is scoped to the authenticated Supabase user; guest drafts remain local.
+- Interface supports dark and light themes. Email one-time-code/magic-link sign-in is available; Google OAuth is not configured.
+- Recent shipped work: PR #21 matched-window replay; PR #22 authenticated shared historical limits; PR #23 Market Atlas; PR #24 unclassified peer correction. All four are merged to main.
+- Remaining hackathon work: record and publish the demo, verify DoraHacks registration and track choice, create the public BUIDL page, and publish the required X post. These are not claimed as complete.
 
 ## 16. Verified hackathon submission requirements
 
-The CoinMarketCap API hackathon is scheduled for **November 18 through December 9, 2026**, closing at **23:59 UTC on December 9**. The selected primary track is **Data and Visualisation**, because the strongest project contribution is a reproducible research view with evidence, matched comparisons, and dated review. The project can mention market tools, but its primary submission story should remain the research workflow.
+The official [CoinMarketCap Round 2 event brief](https://coinmarketcap.com/api/ja/resources/api-hackathon-2026-11/) sets the submission close at **December 9, 2026, 23:59 UTC** (December 10, 00:59 WAT). **Data and Visualisation is the recommended track; DoraHacks selection is not yet confirmed.**
 
-The submission checklist is:
+Every submission requires a public GitHub repository; a working demo/deployed link or screen recording; named CMC endpoints; visible proof of a real API request and response; a short API usefulness/limitations note; one selected track; and an X post linking the DoraHacks BUIDL submission and demo video with #BuildwithCMC, with the X URL included in the form. The checklist and latest verified live API evidence are maintained in [docs/CMC_HACKATHON_READINESS.md](CMC_HACKATHON_READINESS.md); the recording sequence is in [docs/DEMO_RUNBOOK.md](DEMO_RUNBOOK.md).
 
-- Public GitHub repository with clear setup and endpoint documentation.
-- Working deployed demo, or a short screen recording if the live demo cannot be accessed.
-- One primary track selected in DoraHacks.
-- Named CMC endpoints documented in the submission.
-- Visible, redacted proof of at least one real CMC API request and response.
-- A short API feedback note based on actual integration.
-- X post linking the DoraHacks submission and demo, using `#BuildwithCMC`.
-- Complete the submission before the verified close. In Nigeria the deadline is December 10, 2026 at 00:59 WAT.
-
-Hackathon evaluation categories are functionality (30), usefulness (25), interesting API use (20), code quality and documentation (15), and presentation (10). The product plan maps to these through a complete working thesis flow, an explainable use case, multiple CMC-backed contextual endpoints, this blueprint and API documentation, and a polished demo narrative. Track-specific weighting should be rechecked on DoraHacks before final submission.
-
-The event page indicates participant access to the CMC Startup API tier for the event period, subject to the event account match. The matched-window replay remains best-effort: it shows point-in-time comparison results even when CMC historical access is unavailable. The Startup plan currently covers the initial global-metrics, latest-listings, latest-quotes, asset-map, and historical-quotes endpoints selected here. We must still verify the participant's live key and actual endpoint entitlement from a real request before calling any production data live. The API key stays private; API credit usage and historical request counts are monitored.
+The public repository, deployed app, endpoint list, and redacted receipt evidence are ready. Production live data was verified on November 19, 2026, but this does not verify DoraHacks registration, event-specific Startup plan status, the track selection, a BUIDL submission, or any social post. Historical API access remains plan-dependent and uses a shared authenticated budget. Keys stay server-only.
