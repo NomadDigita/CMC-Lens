@@ -48,6 +48,7 @@ function saveTheses(sync = true) {
 function money(n, digits = 2) {
   if (n === null || n === undefined || n === "" || !Number.isFinite(Number(n))) return "—";
   const v = Number(n);
+  if (v === 0) return "$0.00";
   if (v >= 1e12) return `$${(v / 1e12).toFixed(2)}T`;
   if (v >= 1e9) return `$${(v / 1e9).toFixed(digits > 1 ? 2 : 1)}B`;
   if (v >= 1e6) return `$${(v / 1e6).toFixed(1)}M`;
@@ -479,17 +480,27 @@ function renderRwaDetail() {
   const tokens=Array.isArray(asset.tokens)?asset.tokens:[];
   const markets=Array.isArray(asset.tradfi_markets)?asset.tradfi_markets:[];
   const about=metadata?.about||{};
-  const description=about.description||"CMC tracks this underlying asset and the tokenized products associated with it.";
+  const descriptionSource=typeof about.description==="string"?about.description:"CMC tracks this underlying asset and the tokenized products associated with it.";
+  const description=descriptionSource
+    .replace(/\[([^\]]+)\]\((?:https?:\/\/)?[^)]+\)/g,"$1")
+    .replace(/^\s{0,3}#{1,6}\s*/gm,"")
+    .replace(/[*_\x60~]/g,"")
+    .replace(/https?:\/\/\S+/g,"")
+    .replace(/\s+/g," ")
+    .trim()
+    .slice(0,280);
   const logoUrl=typeof about.logo==="string"&&about.logo.startsWith("https://")?about.logo:"";
   const assetMark=logoUrl?`<img src="${escapeHtml(logoUrl)}" alt="" loading="lazy" />`:escapeHtml((asset.symbol||asset.name||"R").slice(0,1));
   const tokenRows=tokens.map(token=>{
-    const price=Number(token.price),deviation=average&&Number.isFinite(price)?(price/average-1)*100:null;
+    const rawPrice=token.price;
+    const price=rawPrice===null||rawPrice===undefined||rawPrice===""?null:Number(rawPrice);
+    const deviation=average&&average>0&&price!==null&&Number.isFinite(price)?(price/average-1)*100:null;
     const cryptoId=String(token.crypto_id||"").replace(/[^0-9]/g,"");
     const icon=cryptoId?`<img src="https://s2.coinmarketcap.com/static/img/coins/64x64/${cryptoId}.png" alt="" loading="lazy" decoding="async" />`:escapeHtml((token.symbol||"T").slice(0,1));
-    return `<div class="rwa-token"><span class="rwa-token-icon" data-fallback="${escapeHtml((token.symbol||"T").slice(0,1))}">${icon}</span><span class="rwa-token-name"><strong>${escapeHtml(token.name||token.symbol||"Token")}</strong><small>${escapeHtml(token.symbol||"")}</small></span><span class="rwa-token-data"><strong>${Number.isFinite(price)?money(price,price<1?5:2):"—"}</strong><small>CMC tokenized avg ${deviation===null?"—":(deviation>=0?"+":"")+deviation.toFixed(2)+"%"}</small></span><span class="rwa-token-data"><strong>${money(token.volume_24h,1)}</strong><small>24h volume</small></span><span class="rwa-token-issuer">${escapeHtml(token.issuer_name||"Issuer unavailable")}</span></div>`;
+    return `<div class="rwa-token"><span class="rwa-token-icon" data-fallback="${escapeHtml((token.symbol||"T").slice(0,1))}">${icon}</span><span class="rwa-token-name"><strong>${escapeHtml(token.name||token.symbol||"Token")}</strong><small>${escapeHtml(token.symbol||"")}</small></span><span class="rwa-token-data"><strong>${price!==null&&Number.isFinite(price)?money(price,price<1?5:2):"—"}</strong><small>CMC tokenized avg ${deviation===null?"—":(deviation>=0?"+":"")+deviation.toFixed(2)+"%"}</small></span><span class="rwa-token-data"><strong>${money(token.volume_24h,1)}</strong><small>24h volume</small></span><span class="rwa-token-issuer">${escapeHtml(token.issuer_name||"Issuer unavailable")}</span></div>`;
   }).join("");
   document.getElementById("rwa-detail").innerHTML=`<div class="rwa-detail-head"><span class="rwa-detail-mark">${assetMark}</span><div><div class="panel-kicker">CMC UNDERLYING · ${escapeHtml(String(asset.asset_type||"asset").toUpperCase())}</div><h2>${escapeHtml(asset.name||asset.symbol)}</h2><p>${escapeHtml(asset.symbol||"")} · ${tokens.length} tokenized instruments · rank ${asset.rwa_rank||"—"}</p></div></div>
-    <p class="rwa-description">${escapeHtml(description)}</p>
+    <p class="rwa-description"><strong>CMC profile</strong> ${escapeHtml(description)}</p>
     <div class="rwa-average"><span><small>CMC TOKENIZED AVERAGE</small><strong>${average===null?"—":money(average,average<1?4:2)}</strong></span><span><small>REPORTED TOKENIZED CAP</small><strong>${money(rwaMetric(asset,"tokenized_market_cap"),1)}</strong></span></div>
     <div class="rwa-tokens-heading"><div><div class="panel-kicker">ISSUER MAP</div><h3>Tokenized instruments</h3></div><span>${tokens.length} tracked</span></div>
     <div class="rwa-token-head"><span>INSTRUMENT</span><span>PRICE DISPERSION</span><span>LIQUIDITY</span><span>ISSUER</span></div>
