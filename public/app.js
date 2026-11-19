@@ -160,7 +160,7 @@ function render() {
   const capChangeAvailable = g.marketCapChange24h !== null && g.marketCapChange24h !== undefined && Number.isFinite(Number(g.marketCapChange24h));
   capChange.className = `metric-change ${capChangeAvailable ? (g.marketCapChange24h >= 0 ? "up" : "down") : ""}`;
   capChange.innerHTML = capChangeAvailable ? `<span>${g.marketCapChange24h >= 0 ? "↗" : "↘"}</span> ${fmtPercent(g.marketCapChange24h)}` : "24h change unavailable";
-  const btcDominance = finiteMetric(g.btcDominance);
+  const btcDominance = hasNumericValue(g.btcDominance) ? Number(g.btcDominance) : null;
   document.getElementById("btc-dominance").innerHTML = btcDominance !== null ? `${btcDominance.toFixed(1)}<span>%</span>` : "—";
   const dominanceBar = document.querySelector(".dominance-bar");
   if (dominanceBar) {
