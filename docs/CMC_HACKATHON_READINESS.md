@@ -1,76 +1,82 @@
 # CMC API Hackathon Readiness
 
-## Event and track
-
-**Event:** Build with CMC: API Hackathon, Round 2  
+**Last checked:** November 19, 2026  
+**Event:** [Build with CMC: API Hackathon, Round 2](https://coinmarketcap.com/api/ja/resources/api-hackathon-2026-11/)  
+**Submission window:** November 18–December 9, 2026; closes December 9 at 23:59 UTC  
 **Recommended track:** Data and Visualisation  
-**Submission window:** 18 November–9 December 2026, 23:59 UTC  
-**Project:** CMC Lens — a market research workspace that makes asset comparisons reviewable over time.
+**Project:** CMC Lens — a research workspace for exploring CMC market data, comparing matched assets, and reviewing dated theses.
 
-CMC Lens is a pre-existing codebase only if its CMC integration and this hackathon-specific work are clearly identified. This round's new work combines a Market Atlas over CMC's top-100 market-cap sample with comparison evidence replay. The Atlas groups each asset into one deterministic primary CMC tag category and plots absolute 24-hour return against category-relative return, while showing missing coverage and source provenance. The matched-window view requests the same saved baseline and review timestamps for every CMC ID, indexes returned daily quotes to 100 at each frozen baseline, and makes missing intervals visible. The original snapshot stays immutable; missing quotes remain missing.
+The repository and CMC integration predate this event. The hackathon-specific contribution is clearly identified as the live Market Atlas and matched-window comparison replay: the Atlas explores CMC's top-100-by-market-cap listings with category-relative context and coverage; replay revisits the same saved CMC IDs across a matched date window and keeps missing observations visible.
 
-## What a participant must submit
+## Official submission requirements
 
-The official CMC event page requires:
+The official CMC event page requires each entry to include:
 
-- A **public GitHub repository**.
-- A working deployed demo or a screen recording.
+- A public GitHub repository.
+- A working demo/deployed link or a short screen recording.
 - One selected track.
-- The CMC endpoints used, named explicitly.
-- Visible proof of a real API request and response.
-- A short note on what the API made possible and where it got in the way.
-- A public X post linking the DoraHacks submission and demo video, with `#BuildwithCMC`; its URL goes in the submission form.
+- CMC API endpoint names.
+- Visible evidence of a real API request and response.
+- A short note on what the API enabled and where it created friction.
+- An X post linking the DoraHacks submission and demo video, with #BuildwithCMC; paste that post URL into the submission form.
 
-Do not mark the entry complete until each item is checked and the DoraHacks BUIDL submission is publicly visible.
+The public repo, live demo, named endpoints, and redacted live receipts are available now. **Event registration, track selection in DoraHacks, BUIDL submission, recording publication, and X post are not confirmed.** Do not mark the entry submitted until the public DoraHacks page and required X URL have both been verified. See the official event page for the authoritative current rules.
 
-## Product value and use
+## What is being submitted
 
-Crypto researchers often see a current price move without a way to preserve the comparison they were considering or to revisit the same assets later. CMC Lens records the question, primary asset, selected peers, period, captured quote values, data timestamps, coverage, and available history. A later review refreshes those exact CMC IDs and compares the new observations with the saved prices.
+CMC Lens is not a generic price dashboard. It helps an independent researcher ask whether a move is broad or asset-specific, preserve the exact CMC IDs and observations behind a comparison, record the question and conditions that would change their view, then append later reviews without rewriting the original evidence.
 
-This is descriptive research workflow, not a price prediction or trading recommendation. The replay uses the primary asset as its benchmark and separately reports an equal-weight peer mean. It does not replace unavailable quotes with estimates.
+**Primary track rationale:** Data and Visualisation best fits the Market Atlas, matched comparisons, and provenance-first research workflow. Track selection remains to be made in the DoraHacks form.
 
-## CMC API endpoints currently used
+## CMC API endpoints used
 
-All requests are made server-side through `api/market.js`; the API key is read from `CMC_PRO_API_KEY` and must never be exposed in browser code, docs, screenshots, or Git history.
+All CMC requests are made server-side through api/market.js. The key is read from CMC_PRO_API_KEY; it must never appear in client code, screenshots, logs, docs, or Git history.
 
 | CMC endpoint | Product use |
 | --- | --- |
-| `/v1/global-metrics/quotes/latest` | Total market cap and BTC dominance context |
-| `/v3/cryptocurrency/listings/latest` | Broad market coverage, asset quotes and category tags |
-| `/v3/fear-and-greed/latest` | Optional sentiment context, separately cached and failure-isolated |
-| `/v1/cryptocurrency/map` | Search names, symbols and CMC IDs |
-| `/v3/cryptocurrency/quotes/latest` | Asset dossiers and refresh of saved comparison IDs |
-| `/v3/cryptocurrency/quotes/historical` | Historical price series for comparisons |
+| /v1/global-metrics/quotes/latest | Global market capitalization and BTC dominance |
+| /v3/fear-and-greed/latest | Optional sentiment context, failure-isolated from core market data |
+| /v3/cryptocurrency/listings/latest | Top-100 market-cap sample, live quotes, and category tags |
+| /v1/cryptocurrency/map | Search asset names/symbols and resolve numeric CMC IDs |
+| /v3/cryptocurrency/quotes/latest | Current asset details and fresh thesis review quotes |
+| /v3/cryptocurrency/quotes/historical | Matched comparison and historical replay, subject to plan access |
 
-The internal route `/api/market?view=asset&id=<CMC_ID>` validates a numeric ID and returns a CMC asset only when the returned CMC ID matches the request. The API key stays on the server.
+Internal app route: GET /api/market supplies the live overview; asset/search/history views use validated server routes. Source receipts expose safe params and normalized summaries, never API keys, request headers, or raw CMC payloads.
 
-## In-product source receipts
+## Verified live API evidence
 
-The **Inspect the CMC source** panel is reachable from the dashboard's data-connection control. After live data loads, it displays the actual endpoint path, allowlisted query parameters, upstream HTTP outcome, application cache state, source-observed timestamp when supplied, CMC retrieval time, app-served time, record count, and a compact normalized response summary. The summary excludes raw responses, headers, and credentials. Demo mode says explicitly that it made no CMC request.
+On **November 19, 2026 at 05:46 UTC**, the production GET /api/market route returned HTTP 200 in live mode. It reported 100 queried, 100 covered, and 0 missing listings for the explicitly scoped top-100-by-market-cap universe. The in-product receipt showed successful upstream HTTP 200 responses for:
 
-Receipts accompany overview, asset, search, historical-series, and thesis-review API responses. They are suitable for a demo walkthrough and for capturing a redacted request/response example. A receipt proves which configured server adapter call was made; it does not prove account registration or DoraHacks submission.
+| Endpoint | Safe query parameters | Records |
+| --- | --- | ---: |
+| /v1/global-metrics/quotes/latest | convert=USD | 1 |
+| /v3/fear-and-greed/latest | none | 1 |
+| /v3/cryptocurrency/listings/latest | start=1, limit=100, convert=USD, sort=market_cap, sort_dir=desc, aux=tags | 100 |
 
-## Evidence and honest limitations
+This is a timestamped check, not a guarantee that every future request will succeed. Judges can reproduce it through the live app's **Inspect source** receipt. The public implementation is in api/market.js; CMC attribution is visible in the UI. No credential or raw response was captured in this evidence.
 
-For a judge-ready demo, capture one comparison-backed thesis twice: first show the saved CMC IDs, quotes, and source timestamps; then show the dated replay and the exact returned quote values. Include the corresponding request and a redacted response excerpt. Never include a key or account credential.
+## What CMC made possible and API friction
 
-Known constraints to disclose:
+**Enabled:** CMC supplies stable numeric asset IDs, current quote and market-cap fields, broad listings, tag metadata, global context, sentiment context, and historical quotes. Together these support a live top-100 rotation map and comparisons that can revisit the same saved assets later.
 
-- The replay is only available when both the saved baseline and current quote are from CoinMarketCap.
-- CMC quote endpoints may return incomplete coverage or unavailable fields; the UI preserves missing values.
-- Historical endpoint access depends on the registered key's plan and event entitlement.
-- The event requires API feedback. Record only observed problems such as unavailable fields, confusing documentation, or rate limits; do not invent issues.
+**Observed friction and product response:** Listing tags are not a complete canonical taxonomy; some assets have no recognized category and others have multiple tags. CMC Lens assigns one deterministic primary category, reports peer coverage, and leaves relative return null when no recognized category/covered peer sample exists. The listings route is a bounded top-100 sample, not the whole market. Historical availability and credits depend on the account plan, so the app applies an authenticated shared budget and reports unavailable history instead of fabricating values.
+
+## Demo and evidence plan
+
+Use [DEMO_RUNBOOK.md](DEMO_RUNBOOK.md) for the walkthrough and recording outline. The demo should show the live data state, the Atlas universe/coverage, one asset's source receipt, a matched comparison, and a thesis baseline. Include a redacted code/response excerpt from the receipt. If a historical request is unavailable, show the explicit limitation state and do not claim a historical result.
 
 ## Submission checklist
 
-- [ ] Confirm DoraHacks registration and CMC API event access.
-- [ ] Confirm the CMC account email entered for registration matches the CMC account email.
-- [ ] Confirm the GitHub repository is public and contains no secrets.
-- [ ] Record a working demo or short screen recording showing a live CMC call.
-- [ ] Include endpoint names and redacted request/response evidence.
-- [ ] Complete the short API usefulness/limitations note from observed use.
-- [ ] Select Data and Visualisation on DoraHacks.
-- [ ] Publish the required X post with the DoraHacks BUIDL link, demo-video link, and `#BuildwithCMC`.
-- [ ] Paste the X post URL into the DoraHacks submission form and verify the public BUIDL page.
+- [x] Public GitHub repository: NomadDigita/CMC-Lens.
+- [x] Production deployment: [cmc-lens.vercel.app](https://cmc-lens.vercel.app/).
+- [x] CMC endpoints named in this document and in the API data plan.
+- [x] Live production call and redacted endpoint/status/count evidence checked on November 19.
+- [x] CMC API usefulness and observed limitations documented.
+- [ ] Confirm event registration and CMC account-email match.
+- [ ] Select Data and Visualisation in the DoraHacks submission.
+- [ ] Record and publish the demo video.
+- [ ] Create the public DoraHacks BUIDL submission and verify its live page.
+- [ ] Publish an X post linking the BUIDL page and video with #BuildwithCMC.
+- [ ] Paste the X post URL into DoraHacks and verify the final public submission.
 
-**Account-specific registration/submission state is not confirmed in this document.** DoraHacks currently presented a human-verification check to the review browser, so no registration or submission form was accessed.
+**Registration note:** Account-specific registration/submission state has not been verified. A previous DoraHacks browser attempt was blocked by human verification, so no form was completed from that session.
