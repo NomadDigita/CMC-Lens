@@ -52,7 +52,7 @@ function setCached(key, value) {
 }
 
 function safeReceiptParams(params={}){
-  const allowed=new Set(["convert","start","limit","sort","sort_dir","aux","id","listing_status","time_start","time_end","interval","count","skip_invalid"]);
+  const allowed=new Set(["convert","start","limit","sort","sort_dir","aux","id","rwa_id","listing_status","time_start","time_end","interval","count","skip_invalid"]);
   return Object.fromEntries(Object.entries(params).filter(([key,value])=>allowed.has(key)&&value!==undefined&&value!==null&&value!=="").map(([key,value])=>[key,String(value).slice(0,120)]));
 }
 
@@ -520,7 +520,7 @@ module.exports = async function handler(req, res) {
     }
     if (view === "rwa-asset") {
       const id=String(req.query.id||"");
-      if(!/^\\d{1,12}$/.test(id))return reply(res,400,{error:"INVALID_RWA_ID",sourceReceipts});
+      if(!/^\d{1,12}$/.test(id))return reply(res,400,{error:"INVALID_RWA_ID",sourceReceipts});
       const result=await liveRwaAsset(id,sourceReceipts);
       return result?reply(res,200,{mode:"live",retrievedAt:new Date().toISOString(),source:{provider:"CoinMarketCap",endpoints:["/v5/real-world-assets/quotes/latest","/v5/real-world-assets/info"],attribution:"Data provided by CoinMarketCap.com"},...result,sourceReceipts}):reply(res,404,{error:"RWA_NOT_FOUND",sourceReceipts});
     }
