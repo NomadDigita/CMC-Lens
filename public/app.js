@@ -53,7 +53,7 @@ function money(n, digits = 2) {
   if (v >= 1e6) return `$${(v / 1e6).toFixed(1)}M`;
   if (v >= 1) {
     const maxFractionDigits = Math.max(2, Math.min(8, Number.isFinite(Number(digits)) ? Math.trunc(Number(digits)) : 2));
-    return `${v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: maxFractionDigits })}`;
+    return "$" + v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: maxFractionDigits });
   }
   return `$${v.toFixed(4)}`;
 }
