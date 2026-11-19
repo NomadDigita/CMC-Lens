@@ -31,6 +31,7 @@ const state = {
   historyPending: {},
   atlas: { category: "all", cap: "all", hideStablecoins: true, mode: "map", selected: [], activeId: null },
   currentAsset: null,
+  rwa: { assets: [], selectedId: null, detail: null, filter: "all", query: "", mode: "demo", loading: false, loadedAt: 0 },
   auth: { configured: false, url: null, publishableKey: null, session: null, user: null, pendingEmail: null, syncing: false, syncRequested: false, syncEpoch: 0, sessionEpoch: 0, syncJob: null }
 };
 
@@ -389,15 +390,125 @@ function carryAtlasSelectionToCompare(startThesis=false){
   renderCompare();
 }
 
+function rwaQuote(asset) {
+  return Array.isArray(asset?.quotes) ? asset.quotes.find(q=>q.symbol==="USD")||asset.quotes[0]||{} : {};
+}
+function rwaMetric(asset,field) {
+  const value=asset?.[field] ?? rwaQuote(asset)?.[field];
+  return value===null||value===undefined||!Number.isFinite(Number(value))?null:Number(value);
+}
+function rwaAssets() { return state.rwa.assets.filter(asset=>asset?.has_tokens!==false); }
+function renderRwa() {
+  const all=rwaAssets();
+  const query=state.rwa.query.trim().toLowerCase();
+  const rows=all.filter(asset=>{
+    const type=String(asset.asset_type||"").toLowerCase();
+    return (state.rwa.filter==="all"||type===state.rwa.filter)
+      && (!query||String(asset.name||"").toLowerCase().includes(query)||String(asset.symbol||"").toLowerCase().includes(query));
+  });
+  const totalCap=all.reduce((sum,a)=>sum+(rwaMetric(a,"tokenized_market_cap")||0),0);
+  const totalVol=all.reduce((sum,a)=>sum+(rwaMetric(a,"tokenized_volume_24h")||0),0);
+  document.getElementById("rwa-total").textContent=all.length?all.length.toLocaleString():"—";
+  document.getElementById("rwa-cap").textContent=all.length?money(totalCap,1):"—";
+  document.getElementById("rwa-volume").textContent=all.length?money(totalVol,1):"—";
+  document.getElementById("rwa-result-count").textContent=rows.length+" assets";
+  const status=document.getElementById("rwa-source-status");
+  status.textContent=state.rwa.mode==="live"?"Live CoinMarketCap RWA data · "+new Date(state.rwa.loadedAt).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"}):"Illustrative sample · not live CMC data";
+  document.getElementById("rwa-status-dot").classList.toggle("live",state.rwa.mode==="live");
+  const host=document.getElementById("rwa-list");
+  host.innerHTML=rows.length?rows.map(asset=>{
+    const id=String(asset.rwa_id||"");
+    const price=rwaMetric(asset,"average_tokenized_price");
+    const cap=rwaMetric(asset,"tokenized_market_cap");
+    const volume=rwaMetric(asset,"tokenized_volume_24h");
+    const issuerCount=Array.isArray(asset.tokens)?new Set(asset.tokens.map(t=>t.issuer_name).filter(Boolean)).size:null;
+    const type=String(asset.asset_type||"asset").replace(/_/g," ");
+    const badge=type==="stock"?"STOCK":type.toUpperCase();
+    return `<button class="rwa-row ${state.rwa.selectedId===id?"selected":""}" data-rwa-id="${escapeHtml(id)}" aria-label="Inspect ${escapeHtml(asset.name||asset.symbol)} tokenized market">
+      <span class="rwa-underlying"><span class="rwa-asset-mark">${escapeHtml((asset.symbol||asset.name||"R").slice(0,1))}</span><span><strong>${escapeHtml(asset.name||asset.symbol||"Unnamed asset")}</strong><small>${escapeHtml(asset.symbol||"")} · ${escapeHtml(badge)}</small></span></span>
+      <span class="rwa-price">${price===null?"—":money(price,price<1?4:2)}<small>${cap===null?"cap unavailable":money(cap,1)+" cap"}</small></span>
+      <span class="rwa-volume">${volume===null?"—":money(volume,1)}<small>24h volume</small></span>
+      <span class="rwa-issuer-count">${issuerCount===null?"Open →":issuerCount+" issuers"}<small>${Array.isArray(asset.tokens)?asset.tokens.length+" tokens":"View issuers"}</small></span>
+    </button>`;
+  }).join(""):`<div class="rwa-empty">${state.rwa.loading?"Loading CMC asset coverage…":"No matching tokenized assets. Try another search or filter."}</div>`;
+  host.querySelectorAll("[data-rwa-id]").forEach(button=>button.addEventListener("click",()=>loadRwaAsset(button.dataset.rwaId)));
+}
+async function loadRwa() {
+  if(state.rwa.loading)return;
+  state.rwa.loading=true;
+  document.getElementById("rwa-list").innerHTML='<div class="rwa-empty">Loading CMC asset coverage…</div>';
+  try{
+    const response=await fetch("/api/market?view=rwa",{headers:{Accept:"application/json"},cache:"no-store"});
+    const payload=await response.json();
+    if(!response.ok)throw new Error(payload.error||"RWA data is unavailable.");
+    state.rwa.assets=Array.isArray(payload.assets)?payload.assets:[];
+    state.rwa.mode=payload.mode||"demo";
+    state.rwa.loadedAt=Date.now();
+    renderRwa();
+    if(state.rwa.selectedId)await loadRwaAsset(state.rwa.selectedId);
+  }catch(error){
+    document.getElementById("rwa-source-status").textContent="CMC RWA data unavailable";
+    document.getElementById("rwa-list").innerHTML='<div class="rwa-empty">Could not load RWA data. Refresh to retry.</div>';
+    toast(error.message||"Could not load CMC RWA data.",true);
+  }finally{state.rwa.loading=false;}
+}
+async function loadRwaAsset(id) {
+  if(!/^\\d{1,12}$/.test(String(id)))return;
+  state.rwa.selectedId=String(id);
+  renderRwa();
+  const detail=document.getElementById("rwa-detail");
+  detail.innerHTML='<div class="rwa-empty-detail"><span class="rwa-orbit" aria-hidden="true">◎</span><div class="panel-kicker">CMC ASSET RECORD</div><h2>Loading issuer data…</h2></div>';
+  try{
+    const response=await fetch("/api/market?view=rwa-asset&id="+encodeURIComponent(id),{headers:{Accept:"application/json"},cache:"no-store"});
+    const payload=await response.json();
+    if(!response.ok)throw new Error(payload.error||"Asset details are unavailable.");
+    state.rwa.detail=payload;
+    renderRwaDetail();
+    renderRwa();
+  }catch(error){
+    detail.innerHTML='<div class="rwa-empty-detail"><div class="panel-kicker">CMC ASSET RECORD</div><h2>Issuer data unavailable.</h2><p>Refresh the asset record to retry.</p></div>';
+  }
+}
+function renderRwaDetail() {
+  const payload=state.rwa.detail,asset=payload?.asset,metadata=payload?.metadata;
+  if(!asset)return;
+  const average=rwaMetric(asset,"average_tokenized_price");
+  const tokens=Array.isArray(asset.tokens)?asset.tokens:[];
+  const markets=Array.isArray(asset.tradfi_markets)?asset.tradfi_markets:[];
+  const about=metadata?.about||{};
+  const description=about.description||"CMC tracks this underlying asset and the tokenized products associated with it.";
+  const logoUrl=typeof about.logo==="string"&&about.logo.startsWith("https://")?about.logo:"";
+  const assetMark=logoUrl?`<img src="${escapeHtml(logoUrl)}" alt="" loading="lazy" />`:escapeHtml((asset.symbol||asset.name||"R").slice(0,1));
+  const tokenRows=tokens.map(token=>{
+    const price=Number(token.price),deviation=average&&Number.isFinite(price)?(price/average-1)*100:null;
+    const cryptoId=String(token.crypto_id||"").replace(/[^0-9]/g,"");
+    const icon=cryptoId?`<img src="https://s2.coinmarketcap.com/static/img/coins/64x64/${cryptoId}.png" alt="" loading="lazy" decoding="async" />`:escapeHtml((token.symbol||"T").slice(0,1));
+    return `<div class="rwa-token"><span class="rwa-token-icon" data-fallback="${escapeHtml((token.symbol||"T").slice(0,1))}">${icon}</span><span class="rwa-token-name"><strong>${escapeHtml(token.name||token.symbol||"Token")}</strong><small>${escapeHtml(token.symbol||"")}</small></span><span class="rwa-token-data"><strong>${Number.isFinite(price)?money(price,price<1?5:2):"—"}</strong><small>CMC tokenized avg ${deviation===null?"—":(deviation>=0?"+":"")+deviation.toFixed(2)+"%"}</small></span><span class="rwa-token-data"><strong>${money(token.volume_24h,1)}</strong><small>24h volume</small></span><span class="rwa-token-issuer">${escapeHtml(token.issuer_name||"Issuer unavailable")}</span></div>`;
+  }).join("");
+  document.getElementById("rwa-detail").innerHTML=`<div class="rwa-detail-head"><span class="rwa-detail-mark">${assetMark}</span><div><div class="panel-kicker">CMC UNDERLYING · ${escapeHtml(String(asset.asset_type||"asset").toUpperCase())}</div><h2>${escapeHtml(asset.name||asset.symbol)}</h2><p>${escapeHtml(asset.symbol||"")} · ${tokens.length} tokenized instruments · rank ${asset.rwa_rank||"—"}</p></div></div>
+    <p class="rwa-description">${escapeHtml(description)}</p>
+    <div class="rwa-average"><span><small>CMC TOKENIZED AVERAGE</small><strong>${average===null?"—":money(average,average<1?4:2)}</strong></span><span><small>REPORTED TOKENIZED CAP</small><strong>${money(rwaMetric(asset,"tokenized_market_cap"),1)}</strong></span></div>
+    <div class="rwa-tokens-heading"><div><div class="panel-kicker">ISSUER MAP</div><h3>Tokenized instruments</h3></div><span>${tokens.length} tracked</span></div>
+    <div class="rwa-token-head"><span>INSTRUMENT</span><span>PRICE DISPERSION</span><span>LIQUIDITY</span><span>ISSUER</span></div>
+    <div class="rwa-token-list">${tokenRows||'<div class="rwa-empty">No token instruments are listed for this underlying.</div>'}</div>
+    <div class="rwa-market-note"><span class="method-mark">ƒ</span><span><strong>Read this carefully</strong><small>Dispersion compares each token price to CMC’s aggregate tokenized average. It is not a redemption guarantee or a quote for the underlying stock.</small></span></div>
+    <div class="rwa-tradfi">${markets.length?`<span class="panel-kicker">LINKED TRADFI MARKETS</span><div>${markets.map(m=>`<span class="rwa-market-chip">${escapeHtml(m.exchange?.name||"Market")} · ${escapeHtml(m.ticker||asset.symbol||"")}</span>`).join("")}</div>`:""}</div>`;
+  document.querySelectorAll(".rwa-token-icon img").forEach(img=>img.addEventListener("error",()=>{
+    const icon=img.parentElement;icon.textContent=icon.dataset.fallback||"?";icon.classList.add("fallback");
+  },{once:true}));
+  const assetLogo=document.querySelector(".rwa-detail-mark img");
+  if(assetLogo)assetLogo.addEventListener("error",()=>{assetLogo.parentElement.textContent=(asset.symbol||"R").slice(0,1);},{once:true});
+}
 function switchView(view) {
   state.view = view;
   document.querySelectorAll(".page-view").forEach(el => el.classList.remove("active"));
   const target = document.getElementById(`view-${view}`); if (target) target.classList.add("active");
   document.querySelectorAll(".nav-item").forEach(el => el.classList.toggle("active", el.dataset.view === view));
-  document.getElementById("breadcrumb-current").textContent = ({pulse:"Market pulse",explore:"Explore assets",compare:"Compare",atlas:"Market Atlas",theses:"Thesis log",settings:"Settings"})[view] || "Workspace";
+  document.getElementById("breadcrumb-current").textContent = ({pulse:"Market pulse",explore:"Explore assets",compare:"Compare",atlas:"Market Atlas",rwa:"RWA desk",theses:"Thesis log",settings:"Settings"})[view] || "Workspace";
   document.getElementById("sidebar").classList.remove("open");
   if (view === "compare") loadCompareHistory();
   if (view === "atlas") renderAtlas();
+  if (view === "rwa" && !state.rwa.loading && (!state.rwa.loadedAt || Date.now()-state.rwa.loadedAt>60_000)) loadRwa();
   window.scrollTo({top:0,behavior:"smooth"});
 }
 
@@ -1153,6 +1264,13 @@ function setup() {
   const savedTheme=localStorage.getItem("cmc-lens-theme");if(savedTheme==="light"||savedTheme==="dark")document.documentElement.dataset.theme=savedTheme;
   document.querySelectorAll("[data-view]").forEach(el=>el.addEventListener("click",()=>switchView(el.dataset.view)));
   document.getElementById("theme-toggle").addEventListener("click",()=>setTheme(document.documentElement.dataset.theme==="dark"?"light":"dark"));
+  document.getElementById("rwa-refresh").addEventListener("click",()=>{state.rwa.loadedAt=0;loadRwa();});
+  document.getElementById("rwa-search").addEventListener("input",e=>{state.rwa.query=e.target.value;renderRwa();});
+  document.querySelectorAll("[data-rwa-type]").forEach(button=>button.addEventListener("click",()=>{
+    state.rwa.filter=button.dataset.rwaType;
+    document.querySelectorAll("[data-rwa-type]").forEach(item=>item.classList.toggle("selected",item===button));
+    renderRwa();
+  }));
   document.querySelectorAll("[data-set-theme]").forEach(el=>el.addEventListener("click",()=>setTheme(el.dataset.setTheme)));
   document.querySelectorAll("[data-thesis-filter]").forEach(el=>el.addEventListener("click",()=>{state.activeFilter=el.dataset.thesisFilter;document.querySelectorAll("[data-thesis-filter]").forEach(x=>x.classList.toggle("selected",x===el));renderThesesPage();}));
   ["new-thesis","new-thesis-alt","explore-new-thesis","theses-new"].forEach(id=>document.getElementById(id).addEventListener("click",()=>thesisForm()));
