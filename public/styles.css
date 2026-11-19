@@ -347,6 +347,7 @@ html[data-theme="light"] .primary-metric{background:radial-gradient(ellipse at 9
 .rwa-tradfi{margin-top:14px}
 .rwa-tradfi>div{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .rwa-market-chip{padding:6px 8px;border:1px solid var(--line);border-radius:99px;color:var(--text-2);font-size:9px}
+.rwa-capture-actions{display:flex;justify-content:flex-end;margin-top:18px;padding-top:14px;border-top:1px solid var(--line-soft)}
 .rwa-footer{align-items:flex-start;gap:16px;line-height:1.5}
 @media(max-width:1120px){.rwa-workspace{grid-template-columns:minmax(0,1fr)}.rwa-detail{min-height:320px}.rwa-empty-detail{min-height:280px}}
 @media(max-width:760px){
@@ -365,6 +366,7 @@ html[data-theme="light"] .primary-metric{background:radial-gradient(ellipse at 9
   .rwa-token{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
   .rwa-token-icon{display:none}
   .rwa-token-issuer{grid-column:1 / -1}
+  .rwa-capture-actions .primary-button{width:100%;justify-content:center}
   .rwa-footer{flex-direction:column}
 }
 @media(prefers-reduced-motion:reduce){.rwa-row{transition:none}}
