@@ -270,6 +270,7 @@ html[data-theme="light"] .primary-metric{background:radial-gradient(ellipse at 9
 }
 
 /* CMC Lens · tokenized real-world asset desk */
+.dominance-card .metric-foot{bottom:34px}
 .nav-item[data-view="rwa"] .nav-icon{color:var(--blue)}
 .rwa-page-heading{align-items:flex-end;gap:24px;margin:28px 0 18px}
 .rwa-page-heading h1 em{color:var(--lime);font-style:normal}
