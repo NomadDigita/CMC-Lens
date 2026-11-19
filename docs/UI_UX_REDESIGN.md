@@ -62,6 +62,11 @@ We will borrow principles, not copy components or effects from the references.
 - Keep the chart and accessible list synchronized.
 - Label the top-100 scope and treat thin or missing categories as unknown instead of giving them a fabricated peer score.
 
+### RWA desk
+- Pair every issuer comparison with a clear next step: save the current CMC evidence as a thesis.
+- Keep tokenized averages distinct from underlying share and commodity prices.
+- In follow-up reviews, show the frozen issuer set beside the fresh one, preserve missing quotes, and label changed coverage so a missing token cannot look like a zero-price move.
+
 ### Thesis log
 - Distinguish original view, baseline data, and later review in both the card and detail.
 - Make open, ready-to-review, and reviewed states obvious; support empty and account-switch states.

@@ -49,6 +49,14 @@ A chart comparison is easy to lose once a user changes screens. A thesis written
 - Persist baseline and review snapshots as append-only records; respect Supabase row-level security.
 - Keep API credentials on the server and out of browser storage and repository history.
 
+### 5. Tokenized asset evidence loop
+
+- From a selected RWA underlying, let a researcher save a dated issuer comparison as a thesis without treating it as a cryptocurrency asset ID.
+- Freeze the CMC tokenized average, aggregate cap and volume, per-token prices, issuers, dispersion, coverage, timestamps, endpoint names, and safe source receipts in the baseline.
+- Revisit the same RWA ID through the RWA quote endpoint; append a new aggregate and issuer snapshot while leaving the baseline unchanged.
+- Compare only like-for-like CMC tokenized aggregates. State that these observations do not represent the underlying share or commodity price, ownership, or redemption rights.
+- Preserve unavailable token prices as null and render them as unavailable rather than zero.
+
 ## Delivery sequence
 
 1. Review current production baseline, API contract, existing snapshot schema, and auth/session boundaries.
@@ -71,6 +79,7 @@ A chart comparison is easy to lose once a user changes screens. A thesis written
 - No cross-account sync response can replace the active account's records after logout or account switch.
 - No secret or user token is exposed in committed assets.
 - A production deploy is checked after merge in both dark and light themes.
+- An RWA thesis preserves issuer-level baseline evidence and a follow-up review uses the matching RWA endpoint without invoking crypto history.
 
 ## Known limitations and follow-up
 
