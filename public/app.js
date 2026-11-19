@@ -76,7 +76,17 @@ function renderCategoryChart() {
 
 function renderMovements() {
   const rows = [...state.data.assets].filter(a => a.symbol !== "USDC" && a.symbol !== "USDT").sort((a, b) => Math.abs(b.change24h) - Math.abs(a.change24h)).slice(0, 4);
-  document.getElementById("movement-list").innerHTML = rows.map(a => `<div class="movement-row" data-asset="${escapeHtml(a.symbol)}" tabindex="0" role="button" aria-label="Open ${escapeHtml(a.name)} research"><div class="asset-cell"><span class="coin-icon" style="--coin-bg:${a.color}20;--coin-fg:${a.color}">${escapeHtml(a.symbol.slice(0, 1))}</span><span class="asset-name-wrap"><span class="asset-name">${escapeHtml(a.name)}</span><small class="asset-symbol">${escapeHtml(a.symbol)}</small></span></div><span class="move-value ${hasNumericValue(a.change24h) ? (Number(a.change24h) >= 0 ? "up" : "down") : ""}">${fmtOptionalPercent(a.change24h)}</span><span class="peer-context"><span class="peer-bar"><i style="--peer:${a.peerDelta}%"></i></span><span class="peer-text">${escapeHtml(a.peers)}</span></span><span class="row-arrow">↗</span></div>`).join("");
+  document.getElementById("movement-list").innerHTML = rows.map(a => {
+    const logoId = String(a.id || "").replace(/[^0-9]/g, "");
+    const fallback = escapeHtml((a.symbol || "?").slice(0, 1));
+    const logo = logoId ? `<img src="https://s2.coinmarketcap.com/static/img/coins/64x64/${logoId}.png" alt="" loading="lazy" decoding="async" />` : fallback;
+    return `<div class="movement-row" data-asset="${escapeHtml(a.symbol)}" tabindex="0" role="button" aria-label="Open ${escapeHtml(a.name)} research"><div class="asset-cell"><span class="coin-icon" data-fallback="${fallback}" style="--coin-bg:${a.color}20;--coin-fg:${a.color}">${logo}</span><span class="asset-name-wrap"><span class="asset-name">${escapeHtml(a.name)}</span><small class="asset-symbol">${escapeHtml(a.symbol)}</small></span></div><span class="move-value ${hasNumericValue(a.change24h) ? (Number(a.change24h) >= 0 ? "up" : "down") : ""}">${fmtOptionalPercent(a.change24h)}</span><span class="peer-context"><span class="peer-bar"><i style="--peer:${a.peerDelta}%"></i></span><span class="peer-text">${escapeHtml(a.peers)}</span></span><span class="row-arrow">↗</span></div>`;
+  }).join("");
+  document.querySelectorAll(".coin-icon img").forEach(img => img.addEventListener("error", () => {
+    const icon = img.parentElement;
+    icon.textContent = icon.dataset.fallback || "?";
+    icon.classList.add("coin-icon-fallback");
+  }, { once: true }));
   document.querySelectorAll(".movement-row").forEach(el => {
     el.addEventListener("click", () => showAsset(el.dataset.asset));
     el.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); showAsset(el.dataset.asset); } });
@@ -150,7 +160,22 @@ function render() {
   const capChangeAvailable = g.marketCapChange24h !== null && g.marketCapChange24h !== undefined && Number.isFinite(Number(g.marketCapChange24h));
   capChange.className = `metric-change ${capChangeAvailable ? (g.marketCapChange24h >= 0 ? "up" : "down") : ""}`;
   capChange.innerHTML = capChangeAvailable ? `<span>${g.marketCapChange24h >= 0 ? "↗" : "↘"}</span> ${fmtPercent(g.marketCapChange24h)}` : "24h change unavailable";
-  document.getElementById("btc-dominance").innerHTML = g.btcDominance !== null && g.btcDominance !== undefined && Number.isFinite(Number(g.btcDominance)) ? `${Number(g.btcDominance).toFixed(1)}<span>%</span>` : "—";
+  const btcDominance = finiteMetric(g.btcDominance);
+  document.getElementById("btc-dominance").innerHTML = btcDominance !== null ? `${btcDominance.toFixed(1)}<span>%</span>` : "—";
+  const dominanceBar = document.querySelector(".dominance-bar");
+  if (dominanceBar) {
+    const fill = dominanceBar.querySelector("span"), marker = dominanceBar.querySelector("i");
+    if (btcDominance !== null) {
+      const percent = Math.max(0, Math.min(100, btcDominance));
+      fill.style.width = percent + "%";
+      marker.style.left = percent + "%";
+      dominanceBar.setAttribute("aria-label", "Bitcoin dominance " + percent.toFixed(1) + "%");
+    } else {
+      fill.style.width = "0%";
+      marker.style.display = "none";
+      dominanceBar.setAttribute("aria-label", "Bitcoin dominance unavailable");
+    }
+  }
   const btc = document.getElementById("btc-change");
   const btcChangeAvailable = g.btcDominanceChange24h !== null && g.btcDominanceChange24h !== undefined && Number.isFinite(Number(g.btcDominanceChange24h));
   btc.className = `metric-change ${btcChangeAvailable ? (g.btcDominanceChange24h >= 0 ? "up" : "down") : ""}`;
