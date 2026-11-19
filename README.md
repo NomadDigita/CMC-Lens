@@ -1,37 +1,61 @@
 # CMC Lens
 
-**A market thesis workbench for evidence-led crypto research.** CMC Lens helps an independent researcher move from noticing a market change to recording a testable view, preserving the data behind it, and reviewing the outcome later.
+**Turn a market move into a research record you can check later.**
 
-CMC Lens is not another price dashboard or a buy/sell signal generator. Its core object is a **thesis record**: a question or hypothesis, the evidence available at the time, the conditions that would change the view, and a dated review of what happened next.
+CMC Lens is an evidence-first crypto research workbench. It combines CMC market context, category-relative discovery, matched asset comparisons, and dated thesis reviews so a researcher can preserve what they saw and revisit it without rewriting the original evidence.
 
-## Current status
+**Live app:** [cmc-lens.vercel.app](https://cmc-lens.vercel.app/) · **Hackathon track:** Data and Visualisation (recommended; DoraHacks selection is not yet confirmed)
 
-Planning and first implementation are in progress. The repository began empty. See [`docs/PRODUCT_BLUEPRINT.md`](docs/PRODUCT_BLUEPRINT.md) for the product scope, users, workflows, architecture, data model, delivery sequence, and hackathon submission plan. See [`docs/API_DATA_PLAN.md`](docs/API_DATA_PLAN.md) for CMC endpoint strategy, attribution, caching, and API-key handling.
+## Why it exists
 
-## Product loop
+A price chart shows what happened. CMC Lens helps a researcher record which assets and metrics informed a view, what would change that view, and what the same evidence looks like later. It keeps source facts, derived calculations, and user-authored reasoning distinct. It does not issue buy/sell instructions or claim to predict prices.
 
-1. **Notice** a market move or change in market context.
-2. **Investigate** the asset against the market and its peers.
-3. **Record** a thesis with evidence, a baseline, and a review horizon.
-4. **Revisit** the dated record and compare the observed result with the original view.
+## Shipped product
 
-## Principles
+- **Market Pulse:** live global context, breadth, category movement, and optional Fear & Greed context, with demo mode clearly labeled when live data is unavailable.
+- **Market Atlas:** a top-100-by-market-cap sample plotted by 24-hour asset return and relative return versus covered category peers. Filters include category, market-cap band, and stablecoins; a keyboard-accessible list is available alongside the map.
+- **Asset research:** search by asset name, symbol, or CMC ID, then inspect a current quote and its timestamps.
+- **Matched comparisons:** compare selected CMC IDs over a shared period and carry the exact cohort into a thesis.
+- **Thesis log and reviews:** preserve a baseline and append dated reviews without replacing the original snapshot.
+- **Source receipts:** inspect named CMC endpoints, safe query parameters, upstream outcome, cache state, timestamps, record count, and a normalized response summary. Keys and raw upstream payloads are excluded.
 
-- Show where a metric came from and when it was observed.
-- Keep calculations inspectable and distinguish them from source data.
-- Explain uncertainty and missing coverage in plain language.
-- Give users a record of their own reasoning, without issuing investment advice.
-- Make dark and light themes equally complete.
-- Keep CMC credentials server-side and attribute CMC data visibly.
+See [docs/PRODUCT_BLUEPRINT.md](docs/PRODUCT_BLUEPRINT.md) for the product, UX, architecture, database, security, and delivery plan. See [docs/API_DATA_PLAN.md](docs/API_DATA_PLAN.md) for data contracts, endpoint use, history budgets, and credential handling.
 
-## Development
+## Live CMC endpoints
 
-The first prototype is intentionally dependency-light so the research flow can be built and deployed quickly. The API adapter lives in `api/`; browser assets live in `public/`. Runtime secrets are supplied through deployment environment variables and are never committed to the repository.
+CMC requests run in the server-side adapter at api/market.js; CMC_PRO_API_KEY is never sent to browser code.
 
-## Data attribution
+| Endpoint | Use |
+| --- | --- |
+| /v1/global-metrics/quotes/latest | Global market-cap and BTC-dominance context |
+| /v3/fear-and-greed/latest | Optional sentiment context |
+| /v3/cryptocurrency/listings/latest | Top-100 listings, quote coverage, and tag metadata for the Atlas |
+| /v1/cryptocurrency/map | Resolve searched assets to stable CMC IDs |
+| /v3/cryptocurrency/quotes/latest | Current asset snapshots and thesis reviews |
+| /v3/cryptocurrency/quotes/historical | Historical comparison and matched-window replay, subject to CMC entitlement |
 
-When CoinMarketCap data is displayed, the product will show **“Data provided by CoinMarketCap.com”** with a link to CoinMarketCap, subject to the applicable API terms.
+The production /api/market response exposes redacted source receipts. The latest verified production response returned live mode, 100 queried and covered listings, and successful HTTP 200 receipts for global metrics, Fear & Greed, and listings. Coverage is time-specific and can change; the UI labels the sample and missing values.
 
-## Disclaimer
+## Run locally
 
-CMC Lens is for research and education. It does not provide financial, investment, tax, or legal advice, and it does not recommend buying or selling an asset.
+Prerequisites: Node.js and the Vercel CLI (or use npx vercel dev).
+
+1. Clone this public repository.
+2. Copy .env.example to .env.local.
+3. Add the CMC key and Supabase URL/publishable key to that local file when you need live data and account sync. A CMC key is optional for the clearly labeled demo experience.
+4. Run npx vercel dev from the repository root.
+
+Never commit .env.local, paste an API key into the browser, or include credentials in screenshots or issue text. For database changes, apply the ordered SQL migrations in supabase/migrations to your own Supabase project.
+
+## Hackathon readiness
+
+The current event, submission checklist, verified live API evidence, honest limitations, and remaining submission steps are tracked in [docs/CMC_HACKATHON_READINESS.md](docs/CMC_HACKATHON_READINESS.md). A practical recording sequence is in [docs/DEMO_RUNBOOK.md](docs/DEMO_RUNBOOK.md).
+
+## Data, privacy, and safety
+
+- Market Pulse, Explore, Market Atlas, Compare, thesis records, and asset dossiers carry visible CoinMarketCap attribution when showing CMC data.
+- The Atlas is a top-100 sample, not the entire market; peer means are descriptive and equal-weighted.
+- Missing quotes and missing category peer samples remain missing.
+- Signed-in research is scoped to the authenticated Supabase user; guest drafts remain local.
+- API credentials remain server-side.
+- CMC Lens is for research and education, not financial, investment, tax, or legal advice.
