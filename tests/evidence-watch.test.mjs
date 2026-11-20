@@ -92,17 +92,27 @@ test("RWA price coverage uses only CMC-returned instruments with numeric prices"
 test("RWA token price range is measured against the CMC tokenized average", () => {
   const result = evaluateCondition({
     condition: { metric_key: "rwa_price_range_pct", operator: "gte", threshold: 2 },
-    asset: rwaAsset, mode: "live", expectedAssetId: "rwa:9", now, receiptValid: true,
+    asset: { ...rwaAsset, tokens: rwaAsset.tokens.slice(0, 3) }, mode: "live", expectedAssetId: "rwa:9", now, receiptValid: true,
   });
   assert.equal(result.outcome, "met");
   assert.equal(result.observedValue, 2);
+});
+
+test("RWA token price range is unknown when returned instruments are missing prices", () => {
+  const result = evaluateCondition({
+    condition: { metric_key: "rwa_price_range_pct", operator: "gte", threshold: 2 },
+    asset: rwaAsset, mode: "live", expectedAssetId: "rwa:9", now, receiptValid: true,
+  });
+  assert.equal(result.outcome, "unknown");
+  assert.equal(result.observedValue, null);
+  assert.equal(result.coverage, "partial");
 });
 
 test("RWA token price range reads the USD quote average when the normalized field is absent", () => {
   const { average_tokenized_price, ...asset } = rwaAsset;
   const result = evaluateCondition({
     condition: { metric_key: "rwa_price_range_pct", operator: "gte", threshold: 2 },
-    asset: { ...asset, quotes: { USD: { average_tokenized_price: average_tokenized_price } } },
+    asset: { ...asset, tokens: asset.tokens.slice(0, 3), quotes: { USD: { average_tokenized_price } } },
     mode: "live", expectedAssetId: "rwa:9", now, receiptValid: true,
   });
   assert.equal(result.outcome, "met");
@@ -124,6 +134,16 @@ test("RWA issuer share groups positive token volumes by issuer", () => {
   const result = evaluateCondition({
     condition: { metric_key: "rwa_top_issuer_volume_share_pct", operator: "gt", threshold: 55 },
     asset: rwaAsset, mode: "live", expectedAssetId: "rwa:9", now, receiptValid: true,
+  });
+  assert.equal(result.outcome, "met");
+  assert.equal(result.observedValue, 60);
+});
+
+test("RWA issuer share uses issuer IDs when the display name is missing", () => {
+  const result = evaluateCondition({
+    condition: { metric_key: "rwa_top_issuer_volume_share_pct", operator: "gte", threshold: 60 },
+    asset: { ...rwaAsset, tokens: [{ price: 100, issuer_id: 1, volume_24h: 60 }, { price: 100, issuer_id: 2, volume_24h: 40 }] },
+    mode: "live", expectedAssetId: "rwa:9", now, receiptValid: true,
   });
   assert.equal(result.outcome, "met");
   assert.equal(result.observedValue, 60);
