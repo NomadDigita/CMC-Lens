@@ -53,7 +53,13 @@ function setCached(key, value) {
 
 function safeReceiptParams(params={}){
   const allowed=new Set(["convert","start","limit","sort","sort_dir","aux","id","rwa_id","listing_status","time_start","time_end","interval","count","skip_invalid"]);
-  return Object.fromEntries(Object.entries(params).filter(([key,value])=>allowed.has(key)&&value!==undefined&&value!==null&&value!=="").map(([key,value])=>[key,String(value).slice(0,120)]));
+  return Object.fromEntries(Object.entries(params).filter(([key,value])=>allowed.has(key)&&value!==undefined&&value!==null&&value!=="").map(([key,value])=>{
+    // CMC permits comma-separated batches of RWA IDs. Preserve the complete
+    // validated batch; truncating it can leave a trailing comma and make the
+    // metadata call fail for every asset in the catalog.
+    const maxLength=key==="rwa_id"?2000:120;
+    return [key,String(value).slice(0,maxLength)];
+  }));
 }
 
 function receiptRows(data){
@@ -347,7 +353,7 @@ async function liveOverview(receiptSink=[]) {
 }
 
 async function liveRwaList(receiptSink=[]) {
-  const cached=getCached("rwa-list-v2",5*60*1000);
+  const cached=getCached("rwa-list-v3",5*60*1000);
   if(cached){
     const receipts=cachedSourceReceipts(cached.sourceReceipts||[]);
     receiptSink.push(...receipts);
@@ -375,7 +381,7 @@ async function liveRwaList(receiptSink=[]) {
   const result={assets:enrichedAssets,total:Number(data?.total_size)||0,hasMore:data?.has_more===true};
   result.sourceReceipts=sourceReceipts;
   receiptSink.push(...sourceReceipts);
-  setCached("rwa-list-v2",result);
+  setCached("rwa-list-v3",result);
   return result;
 }
 
