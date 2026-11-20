@@ -522,8 +522,9 @@ function renderRwa() {
     const logo=safeCmcLogo(asset.logo);
     const fallback=escapeHtml((asset.symbol||asset.name||"R").slice(0,1));
     const mark=logo?`<img src="${escapeHtml(logo)}" alt="" loading="lazy" decoding="async" />`:fallback;
+    const logoTitle=asset.logo_source==="cmc_tracked_token"?"CMC logo for a tracked tokenized instrument":"CoinMarketCap underlying logo";
     return `<button class="rwa-row ${state.rwa.selectedId===id?"selected":""}" data-rwa-id="${escapeHtml(id)}" aria-label="Inspect ${escapeHtml(asset.name||asset.symbol)} tokenized market">
-      <span class="rwa-underlying"><span class="rwa-asset-mark" data-fallback="${fallback}">${mark}</span><span><strong>${escapeHtml(asset.name||asset.symbol||"Unnamed asset")}</strong><small>${escapeHtml(asset.symbol||"")} · ${escapeHtml(badge)}</small></span></span>
+      <span class="rwa-underlying"><span class="rwa-asset-mark" title="${logoTitle}" data-fallback="${fallback}">${mark}</span><span><strong>${escapeHtml(asset.name||asset.symbol||"Unnamed asset")}</strong><small>${escapeHtml(asset.symbol||"")} · ${escapeHtml(badge)}</small></span></span>
       <span class="rwa-price">${price===null?"—":money(price,price<1?4:2)}<small>${cap===null?"cap unavailable":money(cap,1)+" cap"}</small></span>
       <span class="rwa-volume">${volume===null?"—":money(volume,1)}<small>24h volume</small></span>
       <span class="rwa-issuer-count">${issuerCount===null?"Open →":issuerCount+" issuers"}<small>${Array.isArray(asset.tokens)?asset.tokens.length+" tokens":"View issuers"}</small></span>
