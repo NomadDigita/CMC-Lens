@@ -45,10 +45,17 @@ export function evaluateCondition({ condition, asset, mode, expectedAssetId, now
     const numeric = value => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value));
     const prices = tokens.map(token => token?.price).filter(numeric).map(Number);
     const volumes = new Map();
+    let totalPositiveVolume = 0;
+    let unattributedPositiveVolume = 0;
     for (const token of tokens) {
       const issuer = String(token?.issuer_name || "").trim();
       const volume = token?.volume_24h;
-      if (!issuer || !numeric(volume) || Number(volume) <= 0) continue;
+      if (!numeric(volume) || Number(volume) <= 0) continue;
+      totalPositiveVolume += Number(volume);
+      if (!issuer) {
+        unattributedPositiveVolume += Number(volume);
+        continue;
+      }
       volumes.set(issuer, (volumes.get(issuer) || 0) + Number(volume));
     }
     if (metricKey === "rwa_price_coverage_pct") {
@@ -59,9 +66,8 @@ export function evaluateCondition({ condition, asset, mode, expectedAssetId, now
       coverage = prices.length >= 2 && numeric(average) && Number(average) > 0 ? (prices.length === tokens.length ? "complete" : "partial") : "unavailable";
       raw = prices.length >= 2 && numeric(average) && Number(average) > 0 ? (Math.max(...prices) - Math.min(...prices)) / Number(average) * 100 : null;
     } else {
-      const totalVolume = [...volumes.values()].reduce((sum, value) => sum + value, 0);
-      coverage = totalVolume > 0 ? "complete" : "unavailable";
-      raw = totalVolume > 0 ? Math.max(...volumes.values()) / totalVolume * 100 : null;
+      coverage = totalPositiveVolume > 0 ? (unattributedPositiveVolume > 0 ? "partial" : "complete") : "unavailable";
+      raw = totalPositiveVolume > 0 && volumes.size ? Math.max(...volumes.values()) / totalPositiveVolume * 100 : null;
     }
   }
   const observedValue = raw === null || raw === undefined || raw === "" || !Number.isFinite(Number(raw)) ? null : Number(raw);

@@ -107,6 +107,17 @@ test("RWA issuer share groups positive token volumes by issuer", () => {
   assert.equal(result.observedValue, 60);
 });
 
+test("RWA issuer share counts positive volume without issuer attribution in the denominator", () => {
+  const result = evaluateCondition({
+    condition: { metric_key: "rwa_top_issuer_volume_share_pct", operator: "gt", threshold: 54 },
+    asset: { ...rwaAsset, tokens: [...rwaAsset.tokens, { volume_24h: 10 }] },
+    mode: "live", expectedAssetId: "rwa:9", now, receiptValid: true,
+  });
+  assert.equal(result.outcome, "met");
+  assert.ok(Math.abs(result.observedValue - 600 / 11) < 1e-10);
+  assert.equal(result.coverage, "partial");
+});
+
 test("RWA price spread is unknown when there are fewer than two priced tokens", () => {
   const result = evaluateCondition({
     condition: { metric_key: "rwa_price_range_pct", operator: "gt", threshold: 1 },
