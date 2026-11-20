@@ -402,3 +402,32 @@ html[data-theme="light"] .primary-metric{background:radial-gradient(ellipse at 9
 
 /* Preserve the stacked research story at phone widths after later desktop refinements. */
 @media(max-width:760px){.research-focus{grid-template-columns:minmax(0,1fr)}}
+
+/* Review inbox */
+.review-inbox{padding:0 20px 18px}
+.review-inbox-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:14px}
+.review-inbox-summary>div{display:grid;gap:6px;padding:11px;border:1px solid var(--line);border-radius:9px;background:var(--surface-2)}
+.review-inbox-summary small{color:var(--quiet);font:7px var(--mono);letter-spacing:.5px}
+.review-inbox-summary strong{font:500 19px var(--display);font-variant-numeric:tabular-nums}
+.review-inbox-list{display:grid;gap:15px}
+.review-inbox-group{display:grid;gap:6px}
+.review-inbox-group-head{display:flex;align-items:center;justify-content:space-between}
+.review-inbox-group-head h3{margin:0;color:var(--text-2);font:500 12px var(--display)}
+.review-inbox-group-head>span{color:var(--quiet);font:9px var(--mono)}
+.review-inbox-item{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;padding:10px;border:1px solid var(--line-soft);border-radius:8px;background:var(--surface-2);text-align:left;cursor:pointer}
+.review-inbox-item:hover{border-color:color-mix(in srgb,var(--lime) 55%,var(--line))}
+.review-inbox-copy{display:grid;gap:4px;min-width:0}
+.review-inbox-copy strong{overflow:hidden;color:var(--text);font-size:11px;text-overflow:ellipsis;white-space:nowrap}
+.review-inbox-copy small{color:var(--muted);font-size:9px}
+.review-inbox-time{flex:none;color:var(--muted);font:9px var(--mono);white-space:nowrap}
+.review-inbox-time.is-due{color:var(--orange)}
+.review-inbox-time b{padding-left:5px;color:var(--lime);font:inherit}
+.review-inbox-empty{padding:10px;border:1px dashed var(--line);border-radius:8px;color:var(--muted);font-size:10px}
+.review-inbox-note{margin:13px 0 0;color:var(--muted);font-size:9px;line-height:1.5}
+.review-inbox-first{display:grid;justify-items:start;padding:18px 0 8px}
+.review-inbox-first h3{max-width:330px;margin:12px 0 6px;font:500 18px var(--display);line-height:1.2}
+.review-inbox-first p{max-width:380px;color:var(--muted);font-size:11px;line-height:1.6}
+.notification-indicator{display:grid;place-items:center;min-width:4px;width:auto;height:15px;padding:0 4px;border-radius:9px;color:#15200d;font:700 8px var(--mono)}
+.notification-indicator:empty{width:4px;height:4px;min-width:4px;padding:0}
+.notification-button[data-due-count="0"] .notification-indicator{display:block}
+@media(max-width:760px){.notification-button{display:flex}.review-inbox{padding:0 15px 16px}.review-inbox-summary{gap:5px}.review-inbox-summary>div{padding:9px 7px}.review-inbox-summary small{font-size:6px}.review-inbox-item{padding:9px}.review-inbox-time{font-size:8px}}
