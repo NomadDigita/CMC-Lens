@@ -9,7 +9,7 @@ A thesis already stores the question, baseline, review date, and a written condi
 
 ## User flow
 
-1. In the first release, a researcher adds one crypto quote rule per thesis using an allowlisted CMC metric, operator, threshold, and effect label: strengthen, weaken, or invalidate. Multi-rule theses and RWA rules follow after this slice is verified.
+1. A researcher adds one rule per thesis using an allowlisted CMC metric, operator, threshold, and effect label: strengthen, weaken, or invalidate. Crypto rules use the 24-hour change or market capitalization. RWA rules use priced-token coverage, token-price range against CMC's tokenized average, or largest issuer share of positive reported token volume.
 2. The UI explains the metric, units, source coverage, and whether that metric is available for the selected asset type.
 3. A check runs only after a user refresh or when a review is opened. Each rule returns **met**, **not met**, or **unknown**. Missing fields, stale data, failed upstream calls, and unsupported metrics return unknown.
 4. Each result shows the measured value, threshold, source endpoint, source observation time, retrieval time, coverage, and method.
@@ -21,7 +21,7 @@ A thesis already stores the question, baseline, review date, and a written condi
 | --- | --- | --- | --- |
 | Crypto asset | 24h change | 24h change falls below −8% | Quote observation time and selected CMC ID must be present |
 | Crypto asset | Market cap | Market cap drops below a saved threshold | Null and zero stay distinct |
-| RWA underlying | Price coverage | Quoted token count falls below 80% | Denominator is CMC-returned instruments for that underlying |
+| RWA underlying | Price coverage | Priced token count falls below 80% | Denominator is CMC-returned instruments for that underlying |
 | RWA underlying | Token price range | Range against CMC tokenized average rises above 1% | Not a parity or arbitrage claim |
 | RWA underlying | Issuer volume share | Largest issuer share exceeds 60% | Uses positive 24h volume only and only the returned token rows |
 
@@ -52,7 +52,7 @@ No social or news interpretation, synthetic metric, AI-generated trade call, or 
 3. Implement deterministic validators and unit-level edge cases for nulls, zero values, stale timestamps, wrong asset IDs, and provider failures.
 4. Build the one-rule editor and append-only check history in the thesis detail view; preserve legacy qualitative condition text and sync pause state.
 5. Add an authenticated evaluation route with safe parameter allow-lists, rate limits, CMC receipts, and no secret-bearing errors.
-6. Exercise crypto, RWA, partial-coverage, demo, unavailable, signed-out, and account-switch paths.
+6. Exercise crypto, RWA, partial-coverage, missing-volume, demo, unavailable, signed-out, and account-switch paths.
 7. Verify accessible desktop/mobile layouts and both themes in the live Vercel deployment.
 8. Add scheduled checks only after an explicit quota and operations review.
 

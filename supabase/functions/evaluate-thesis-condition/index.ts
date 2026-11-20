@@ -48,9 +48,10 @@ function eventView(row) {
   };
 }
 
-function safeReceipt(receipts, provider) {
+function safeReceipt(receipts, provider, endpoint) {
   if (!Array.isArray(receipts) || !receipts.length) return {};
-  const row = receipts[0];
+  const row = endpoint ? receipts.find(item => item?.endpoint === endpoint) : receipts[0];
+  if (!row) return {};
   const cache = row.appCache && typeof row.appCache === "object" ? row.appCache : {};
   return {
     provider: typeof row.provider === "string" ? row.provider.slice(0, 80) : provider,
@@ -61,6 +62,7 @@ function safeReceipt(receipts, provider) {
     cacheStatus: typeof cache.status === "string" ? cache.status.slice(0, 24) : "unknown",
     servedAt: typeof cache.servedAt === "string" ? cache.servedAt : null,
     sourceRetrievedAt: typeof cache.sourceRetrievedAt === "string" ? cache.sourceRetrievedAt : null,
+    sourceObservedAt: typeof row.sourceObservedAt === "string" ? row.sourceObservedAt : null,
   };
 }
 
@@ -107,7 +109,8 @@ Deno.serve(async (req) => {
     .maybeSingle();
   if (conditionError || !condition) return json({ error: "CONDITION_NOT_FOUND" }, 404, origin);
   if (!condition.active) return json({ error: "CONDITION_PAUSED" }, 409, origin);
-  if (condition.condition_type !== "threshold" || !["change_24h_pct", "market_cap_usd"].includes(condition.metric_key) ||
+  if (condition.condition_type !== "threshold" ||
+      !["change_24h_pct", "market_cap_usd", "rwa_price_coverage_pct", "rwa_price_range_pct", "rwa_top_issuer_volume_share_pct"].includes(condition.metric_key) ||
       !["lt", "lte", "gt", "gte"].includes(condition.operator) || (condition.threshold === null || !Number.isFinite(Number(condition.threshold)))) {
     return json({ error: "UNSUPPORTED_RULE" }, 422, origin);
   }
@@ -118,7 +121,14 @@ Deno.serve(async (req) => {
     .eq("id", thesisId)
     .eq("owner_id", user.id)
     .maybeSingle();
-  if (thesisError || !thesis || !/^\d{1,12}$/.test(String(thesis.primary_asset_id || ""))) return json({ error: "ASSET_NOT_AVAILABLE" }, 422, origin);
+  if (thesisError || !thesis) return json({ error: "ASSET_NOT_AVAILABLE" }, 422, origin);
+  const savedAssetId = String(thesis.primary_asset_id || "");
+  const isRwa = savedAssetId.startsWith("rwa:");
+  const assetId = isRwa ? savedAssetId.slice(4) : savedAssetId;
+  if (!/^\d{1,12}$/.test(assetId)) return json({ error: "ASSET_NOT_AVAILABLE" }, 422, origin);
+  const rwaMetrics = ["rwa_price_coverage_pct", "rwa_price_range_pct", "rwa_top_issuer_volume_share_pct"];
+  const allowedMetrics = isRwa ? rwaMetrics : ["change_24h_pct", "market_cap_usd"];
+  if (!allowedMetrics.includes(condition.metric_key)) return json({ error: "UNSUPPORTED_RULE" }, 422, origin);
 
   const { data: duplicate } = await admin
     .from("thesis_condition_events")
@@ -150,7 +160,8 @@ Deno.serve(async (req) => {
 
   let market = null;
   try {
-    const response = await fetch(marketUrl + "?view=asset&id=" + encodeURIComponent(String(thesis.primary_asset_id)), {
+    const marketView = isRwa ? "rwa-asset" : "asset";
+    const response = await fetch(marketUrl + "?view=" + marketView + "&id=" + encodeURIComponent(assetId), {
       headers: { Accept: "application/json" },
       cache: "no-store",
       signal: AbortSignal.timeout(12000),
@@ -164,17 +175,21 @@ Deno.serve(async (req) => {
   const asset = market?.asset && typeof market.asset === "object" ? market.asset : null;
   const mode = market?.mode;
   const metric = condition.metric_key;
-  const sourceObservedAt = typeof asset?.observedAt === "string" ? asset.observedAt : null;
+  const sourceObservedAt = isRwa
+    ? (typeof (asset?.last_updated ?? asset?.quotes?.USD?.last_updated) === "string" ? (asset?.last_updated ?? asset?.quotes?.USD?.last_updated) : null)
+    : (typeof asset?.observedAt === "string" ? asset.observedAt : null);
   const receipts = market?.sourceReceipts;
-  const receipt = safeReceipt(receipts, mode === "live" ? "CoinMarketCap" : "unavailable");
+  const expectedEndpoint = isRwa ? "/v5/real-world-assets/quotes/latest" : "/v3/cryptocurrency/quotes/latest";
+  const receipt = safeReceipt(receipts, mode === "live" ? "CoinMarketCap" : "unavailable", expectedEndpoint);
   const receiptValid = (receipt.outcome === "success" && Number(receipt.upstreamStatus) >= 200 && Number(receipt.upstreamStatus) < 300) ||
     (receipt.cacheStatus === "hit" && Boolean(receipt.sourceRetrievedAt));
-  const live = mode === "live" && String(asset?.id || "") === String(thesis.primary_asset_id) && receiptValid;
+  const liveAssetId = isRwa ? String(asset?.rwa_id || "") : String(asset?.id || "");
+  const live = mode === "live" && liveAssetId === assetId && receiptValid;
   const threshold = Number(condition.threshold);
-  const expectedUnit = metric === "change_24h_pct" ? "%" : "USD";
+  const expectedUnit = metric === "market_cap_usd" ? "USD" : "%";
   if (condition.unit && condition.unit !== expectedUnit) return json({ error: "UNSUPPORTED_RULE" }, 422, origin);
   const evaluation = evaluateCondition({
-    condition, asset, mode, expectedAssetId: String(thesis.primary_asset_id),
+    condition, asset, mode, expectedAssetId: isRwa ? savedAssetId : assetId,
     now: now.getTime(), maxAgeMs: MAX_FRESH_MS, receiptValid,
   });
   const { outcome, freshness, detail, observedValue } = evaluation;
@@ -187,9 +202,10 @@ Deno.serve(async (req) => {
     outcome,
     rule_snapshot: {
       metricKey: condition.metric_key,
+      assetKind: isRwa ? "rwa" : "crypto",
       operator: condition.operator,
       threshold,
-      unit: condition.unit || (metric === "change_24h_pct" ? "%" : "USD"),
+      unit: condition.unit || expectedUnit,
       effect: condition.effect,
       description: condition.description || "",
       active: condition.active,
@@ -197,12 +213,12 @@ Deno.serve(async (req) => {
     },
     observed_value: observedValue,
     threshold,
-    unit: condition.unit || (metric === "change_24h_pct" ? "%" : "USD"),
+    unit: condition.unit || expectedUnit,
     source_provider: live ? "CoinMarketCap" : mode === "demo" ? "Demo dataset" : "unavailable",
     source_endpoint: live && typeof receipt.endpoint === "string" ? receipt.endpoint : null,
     source_observed_at: sourceObservedAt,
     evaluated_at: now.toISOString(),
-    coverage: outcome === "met" || outcome === "not_met" ? "complete" : "unavailable",
+    coverage: evaluation.coverage || (outcome === "met" || outcome === "not_met" ? "complete" : "unavailable"),
     freshness,
     source_receipt: receipt,
     detail,
