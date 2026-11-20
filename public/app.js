@@ -453,13 +453,22 @@ function rwaQualitySnapshot(asset) {
   const prices=tokens.map(token=>Number(token?.price)).filter(value=>Number.isFinite(value)&&value>0);
   const volumeRows=tokens.map(token=>({token,volume:token?.volume_24h===null||token?.volume_24h===undefined||token?.volume_24h===""?null:Number(token.volume_24h)})).filter(row=>row.volume!==null&&Number.isFinite(row.volume)&&row.volume>=0);
   const issuerVolumes=new Map();
+  let totalPositiveVolume=0,unattributedVolume=0;
   for(const {token,volume} of volumeRows){
     if(volume<=0)continue;
-    const issuer=String(token.issuer_name||"Issuer unavailable").slice(0,120);
-    issuerVolumes.set(issuer,(issuerVolumes.get(issuer)||0)+volume);
+    totalPositiveVolume+=volume;
+    const issuerId=String(token.issuer_id??"").trim();
+    const issuerName=String(token.issuer_name||"").trim();
+    const key=issuerId?"id:"+issuerId:issuerName?"name:"+issuerName.toLowerCase():"";
+    if(!key){unattributedVolume+=volume;continue;}
+    const label=issuerName||("Issuer "+issuerId);
+    const current=issuerVolumes.get(key)||{issuer:label,volume:0};
+    current.volume+=volume;
+    if(issuerName)current.issuer=issuerName.slice(0,120);
+    issuerVolumes.set(key,current);
   }
-  const totalReportedVolume=[...issuerVolumes.values()].reduce((sum,value)=>sum+value,0);
-  const issuers=[...issuerVolumes.entries()].map(([issuer,volume])=>({issuer,volume,sharePct:totalReportedVolume>0?volume/totalReportedVolume*100:null})).sort((a,b)=>b.volume-a.volume);
+  const issuerAttributionComplete=totalPositiveVolume>0&&unattributedVolume===0;
+  const issuers=[...issuerVolumes.values()].map(row=>({...row,sharePct:issuerAttributionComplete?row.volume/totalPositiveVolume*100:null})).sort((a,b)=>b.volume-a.volume);
   const average=rwaMetric(asset,"average_tokenized_price");
   const rangePct=prices.length>1&&average!==null&&average>0?((Math.max(...prices)-Math.min(...prices))/average)*100:null;
   return {
@@ -471,10 +480,12 @@ function rwaQualitySnapshot(asset) {
     priceMin:prices.length?Math.min(...prices):null,
     priceMax:prices.length?Math.max(...prices):null,
     priceRangePct:rangePct,
-    topIssuer:issuers[0]?.issuer||null,
-    topIssuerVolumeSharePct:issuers[0]?.sharePct??null,
+    topIssuer:issuerAttributionComplete?issuers[0]?.issuer||null:null,
+    topIssuerVolumeSharePct:issuerAttributionComplete?issuers[0]?.sharePct??null:null,
+    issuerAttributionComplete,
+    unattributedVolume,
     issuers:issuers.slice(0,4),
-    reportedVolume:totalReportedVolume||null,
+    reportedVolume:totalPositiveVolume||null,
     sourceUpdatedAt:asset?.last_updated||rwaQuote(asset)?.last_updated||null
   };
 }
@@ -483,7 +494,8 @@ function rwaQualityMarkup(snapshot) {
   const count=(n,total)=>`${n} / ${total}`;
   const issuerRows=(snapshot.issuers||[]).map(item=>`<div class="rwa-quality-issuer"><span><strong>${escapeHtml(item.issuer)}</strong><small>${amountLabel(item.volume)} reported volume</small></span><span class="rwa-quality-share"><i><b style="width:${Math.max(0,Math.min(100,item.sharePct||0))}%"></b></i><small>${item.sharePct===null?"—":item.sharePct.toFixed(1)+"%"}</small></span></div>`).join("");
   const updated=snapshot.sourceUpdatedAt?receiptTime(snapshot.sourceUpdatedAt):"CMC did not supply an update time";
-  return `<section class="rwa-quality" aria-label="RWA market data quality and issuer concentration"><div class="rwa-quality-head"><div><div class="panel-kicker">COVERAGE & CONCENTRATION</div><h3>What CMC reports</h3></div><span class="rwa-quality-time">Source updated · ${escapeHtml(updated)}</span></div><div class="rwa-quality-metrics"><div><small>PRICE COVERAGE</small><strong>${count(snapshot.pricedCount,snapshot.instrumentCount)}</strong><span>instruments with a price</span></div><div><small>VOLUME COVERAGE</small><strong>${count(snapshot.volumeReportedCount,snapshot.instrumentCount)}</strong><span>instruments with reported volume</span></div><div><small>PRICE RANGE</small><strong>${snapshot.priceRangePct===null?"—":snapshot.priceRangePct.toFixed(2)+"%"}</strong><span>${snapshot.priceMin===null?"Not enough prices":`${money(snapshot.priceMin,snapshot.priceMin<1?5:2)}–${money(snapshot.priceMax,snapshot.priceMax<1?5:2)} across reported tokens`}</span></div></div><div class="rwa-quality-issuers"><div class="panel-kicker">SHARE OF REPORTED TOKEN VOLUME · 24H</div>${issuerRows||'<div class="rwa-quality-empty">No positive issuer volumes were reported.</div>'}</div><p class="rwa-quality-note">Coverage counts use the instruments CMC returned for this underlying. Issuer shares use only positive reported 24h token volume; they are not shares of the underlying asset’s total market.</p></section>`;
+  const attributionNote=snapshot.issuerAttributionComplete===false&&Number(snapshot.unattributedVolume)>0?`Issuer shares are withheld because ${amountLabel(snapshot.unattributedVolume)} of positive volume has no issuer ID or name.`:"Issuer shares use only positive reported 24h token volume; they are not shares of the underlying asset’s total market.";
+  return `<section class="rwa-quality" aria-label="RWA market data quality and issuer concentration"><div class="rwa-quality-head"><div><div class="panel-kicker">COVERAGE & CONCENTRATION</div><h3>What CMC reports</h3></div><span class="rwa-quality-time">Source updated · ${escapeHtml(updated)}</span></div><div class="rwa-quality-metrics"><div><small>PRICE COVERAGE</small><strong>${count(snapshot.pricedCount,snapshot.instrumentCount)}</strong><span>instruments with a price</span></div><div><small>VOLUME COVERAGE</small><strong>${count(snapshot.volumeReportedCount,snapshot.instrumentCount)}</strong><span>instruments with reported volume</span></div><div><small>PRICE RANGE</small><strong>${snapshot.priceRangePct===null?"—":snapshot.priceRangePct.toFixed(2)+"%"}</strong><span>${snapshot.priceMin===null?"Not enough prices":`${money(snapshot.priceMin,snapshot.priceMin<1?5:2)}–${money(snapshot.priceMax,snapshot.priceMax<1?5:2)} across reported tokens`}</span></div></div><div class="rwa-quality-issuers"><div class="panel-kicker">ATTRIBUTED ISSUER VOLUME · 24H</div>${issuerRows||'<div class="rwa-quality-empty">No positive issuer volumes were reported.</div>'}</div><p class="rwa-quality-note">Coverage counts use the instruments CMC returned for this underlying. ${escapeHtml(attributionNote)}</p></section>`;
 }
 function rwaQualityComparisonMarkup(baseline,current) {
   if(!baseline||!current)return '<div class="detail-note">Market-quality comparison will appear when both the saved baseline and this review contain CMC issuer data.</div>';
@@ -593,15 +605,18 @@ function renderRwaDetail() {
     const rawPrice=token.price;
     const price=rawPrice===null||rawPrice===undefined||rawPrice===""?null:Number(rawPrice);
     const deviation=average&&average>0&&price!==null&&Number.isFinite(price)?(price/average-1)*100:null;
+    const marker=deviation===null?null:Math.max(0,Math.min(100,50+deviation*5));
+    const dispersion=deviation===null?'—':(deviation>=0?'+':'')+deviation.toFixed(2)+'%';
     const cryptoId=String(token.crypto_id||"").replace(/[^0-9]/g,"");
     const icon=cryptoId?`<img src="https://s2.coinmarketcap.com/static/img/coins/64x64/${cryptoId}.png" alt="" loading="lazy" decoding="async" />`:escapeHtml((token.symbol||"T").slice(0,1));
-    return `<div class="rwa-token"><span class="rwa-token-icon" data-fallback="${escapeHtml((token.symbol||"T").slice(0,1))}">${icon}</span><span class="rwa-token-name"><strong>${escapeHtml(token.name||token.symbol||"Token")}</strong><small>${escapeHtml(token.symbol||"")}</small></span><span class="rwa-token-data"><strong>${price!==null&&Number.isFinite(price)?money(price,price<1?5:2):"—"}</strong><small>CMC tokenized avg ${deviation===null?"—":(deviation>=0?"+":"")+deviation.toFixed(2)+"%"}</small></span><span class="rwa-token-data"><strong>${money(token.volume_24h,1)}</strong><small>24h volume</small></span><span class="rwa-token-issuer">${escapeHtml(token.issuer_name||"Issuer unavailable")}</span></div>`;
+    const rail=marker===null?'':`<span class="rwa-dispersion-track" role="img" aria-label="${escapeHtml((token.symbol||token.name||"Token")+" price is "+dispersion+" from the CMC tokenized average; rail spans minus 10 to plus 10 percent")}" title="${escapeHtml(dispersion+" from CMC tokenized average · rail spans ±10%")}"><i class="${deviation>0.05?"above":deviation< -0.05?"below":"aligned"}" style="left:${marker}%"></i></span>`;
+    return `<div class="rwa-token"><span class="rwa-token-icon" data-fallback="${escapeHtml((token.symbol||"T").slice(0,1))}">${icon}</span><span class="rwa-token-name"><strong>${escapeHtml(token.name||token.symbol||"Token")}</strong><small>${escapeHtml(token.symbol||"")}</small></span><span class="rwa-token-data"><strong>${price!==null&&Number.isFinite(price)?money(price,price<1?5:2):"—"}</strong><small>CMC avg ${escapeHtml(dispersion)}</small>${rail}</span><span class="rwa-token-data"><strong>${money(token.volume_24h,1)}</strong><small>24h volume</small></span><span class="rwa-token-issuer">${escapeHtml(token.issuer_name||"Issuer unavailable")}</span></div>`;
   }).join("");
   document.getElementById("rwa-detail").innerHTML=`<div class="rwa-detail-head"><span class="rwa-detail-mark">${assetMark}</span><div><div class="panel-kicker">CMC UNDERLYING · ${escapeHtml(String(asset.asset_type||"asset").toUpperCase())}</div><h2>${escapeHtml(asset.name||asset.symbol)}</h2><p>${escapeHtml(asset.symbol||"")} · ${tokens.length} tokenized instruments · rank ${asset.rwa_rank||"—"}</p></div></div>
     <p class="rwa-description"><strong>CMC profile</strong> ${escapeHtml(description)}</p>
     <div class="rwa-average"><span><small>CMC TOKENIZED AVERAGE</small><strong>${average===null?"—":money(average,average<1?4:2)}</strong></span><span><small>REPORTED TOKENIZED CAP</small><strong>${money(rwaMetric(asset,"tokenized_market_cap"),1)}</strong></span></div>
     <div class="rwa-tokens-heading"><div><div class="panel-kicker">ISSUER MAP</div><h3>Tokenized instruments</h3></div><span>${tokens.length} tracked</span></div>
-    <div class="rwa-token-head"><span>INSTRUMENT</span><span>PRICE DISPERSION</span><span>LIQUIDITY</span><span>ISSUER</span></div>
+    <div class="rwa-token-head"><span>INSTRUMENT</span><span>PRICE DISPERSION · ±10% RAIL</span><span>LIQUIDITY</span><span>ISSUER</span></div>
     <div class="rwa-token-list">${tokenRows||'<div class="rwa-empty">No token instruments are listed for this underlying.</div>'}</div>
     ${rwaQualityMarkup(qualitySnapshot)}
     <div class="rwa-market-note"><span class="method-mark">ƒ</span><span><strong>Read this carefully</strong><small>Dispersion compares each token price to CMC’s aggregate tokenized average. It is not a redemption guarantee or a quote for the underlying stock.</small></span></div>

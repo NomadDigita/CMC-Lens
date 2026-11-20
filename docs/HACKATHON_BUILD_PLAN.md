@@ -4,7 +4,7 @@
 **Hackathon:** Build with CMC: API Hackathon, Round 2  
 **Primary track:** Real World Assets  
 **Supporting track fit:** Data and Visualisation  
-**Status checked:** 19 November 2026
+**Status checked:** 20 November 2026
 
 ## Product direction
 
@@ -42,7 +42,7 @@ CMC publishes a 100-point overall rubric:
 | Code quality and documentation | 15 | Server-side key, input validation, caching, source receipts, documented endpoint paths, accessible controls. |
 | Presentation | 10 | Clean responsive interface, CMC attribution, short demo, visible real API request and response. |
 
-The CMC announcement notes that per-track weights appear on the DoraHacks Tracks tab. The DoraHacks event page required a human verification challenge during this review, so its track-specific weights have not been independently confirmed here. Confirm them there before submission.
+The current CMC Round 2 brief publishes the overall rubric above. The Real World Assets track is the strongest fit because the new work uses the RWA endpoints directly; the product still needs the specific track selected in the BUIDL form. Track-specific weights are not exposed in the public CMC brief and remain to be checked in the DoraHacks Tracks tab.
 
 ## New Round 2 CMC API integration
 
@@ -57,13 +57,15 @@ The RWA catalog requests up to 100 underlyings, then batches a metadata lookup t
 
 1. **Production UI fixes:** render official CMC token logos with safe letter fallbacks; correct sentiment-label wrapping; make BTC dominance indicator follow the live value.
 2. **RWA API service:** add list and detail routes with input validation, caching, source receipts, and clearly labelled demo data.
-3. **RWA Desk UI:** add search and asset-type filters, market-cap/volume summary, issuer comparison, price dispersion, and mobile layouts.
-4. **Reliability:** test live and demo API shapes, missing metadata, failed logo images, rate limits, and empty token sets; preserve existing market, compare, and thesis flows.
-5. **Submission proof:** update README with the new Round 2 feature, document endpoint paths, capture a real sanitized request/response, record a short demo, and prepare the required X post and DoraHacks submission fields.
+3. **RWA Desk:** build the searchable underlying-to-issuer explorer with CMC logo attribution, asset filters, coverage summaries, a fixed-scale dispersion rail, and phone layouts.
+4. **Research memory:** snapshot RWA issuer and market-quality evidence in a dated thesis, then compare later reviews without rewriting the baseline.
+5. **Evidence Watch extension:** add fresh, user-triggered checks for RWA price coverage, price dispersion, and issuer concentration. Partial prices or unattributed volume do not produce a confident result.
+6. **Reliability:** test live and demo API shapes, missing metadata, failed logo images, partial issuer attribution, stale quotes, API limits, and empty token sets; preserve existing market, compare, and thesis flows.
+7. **Submission proof:** update the README with the Round 2 feature boundary, document endpoint paths, capture a sanitized real request/response, record a short demo, and prepare the required X post and DoraHacks fields.
 
 ## Product boundaries
 
 - CMC values are observations, not recommendations or forecasts.
 - Tokenized market data does not establish legal ownership, redemption rights, or parity with an underlying asset.
 - Demo values remain visibly identified and must never be presented as live.
-- Track-specific weights and eligibility interpretation must be checked against DoraHacks before the final submission.
+- Select **Real World Assets** in the submission and check the DoraHacks Tracks tab for any track-specific weighting before final submission.
