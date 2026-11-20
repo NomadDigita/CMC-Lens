@@ -65,6 +65,18 @@ function escapeHtml(s = "") { return String(s).replace(/[&<>"']/g, ch => ({"&":"
 function safeDate(iso) { const d = new Date(iso); return Number.isNaN(d.getTime()) ? "Not set" : d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }); }
 function assetBySymbol(symbol) { return state.data.assets.find(a => a.symbol === symbol) || demoData.assets.find(a => a.symbol === symbol); }
 function amountLabel(n) { return money(n, 1); }
+function authRedirectTo() {
+  const host=location.hostname.toLowerCase();
+  const isLocal=host==="localhost"||host==="127.0.0.1"||host==="[::1]";
+  return isLocal?"https://cmc-lens.vercel.app/":`${location.origin}/`;
+}
+function safeCmcLogo(value) {
+  if(typeof value!=="string")return "";
+  try{
+    const url=new URL(value);
+    return url.protocol==="https:"&&url.hostname==="s2.coinmarketcap.com"?url.href:"";
+  }catch{return "";}
+}
 
 function sparkline() {
   const points = [76,72,74,67,69,60,62,54,59,49,55,48,51,40,44,38,42,30,33,27,32,19,23,14];
@@ -507,14 +519,18 @@ function renderRwa() {
     const issuerCount=Array.isArray(asset.tokens)?new Set(asset.tokens.map(t=>t.issuer_name).filter(Boolean)).size:null;
     const type=String(asset.asset_type||"asset").replace(/_/g," ");
     const badge=type==="stock"?"STOCK":type.toUpperCase();
+    const logo=safeCmcLogo(asset.logo);
+    const fallback=escapeHtml((asset.symbol||asset.name||"R").slice(0,1));
+    const mark=logo?`<img src="${escapeHtml(logo)}" alt="" loading="lazy" decoding="async" />`:fallback;
     return `<button class="rwa-row ${state.rwa.selectedId===id?"selected":""}" data-rwa-id="${escapeHtml(id)}" aria-label="Inspect ${escapeHtml(asset.name||asset.symbol)} tokenized market">
-      <span class="rwa-underlying"><span class="rwa-asset-mark">${escapeHtml((asset.symbol||asset.name||"R").slice(0,1))}</span><span><strong>${escapeHtml(asset.name||asset.symbol||"Unnamed asset")}</strong><small>${escapeHtml(asset.symbol||"")} · ${escapeHtml(badge)}</small></span></span>
+      <span class="rwa-underlying"><span class="rwa-asset-mark" data-fallback="${fallback}">${mark}</span><span><strong>${escapeHtml(asset.name||asset.symbol||"Unnamed asset")}</strong><small>${escapeHtml(asset.symbol||"")} · ${escapeHtml(badge)}</small></span></span>
       <span class="rwa-price">${price===null?"—":money(price,price<1?4:2)}<small>${cap===null?"cap unavailable":money(cap,1)+" cap"}</small></span>
       <span class="rwa-volume">${volume===null?"—":money(volume,1)}<small>24h volume</small></span>
       <span class="rwa-issuer-count">${issuerCount===null?"Open →":issuerCount+" issuers"}<small>${Array.isArray(asset.tokens)?asset.tokens.length+" tokens":"View issuers"}</small></span>
     </button>`;
   }).join(""):`<div class="rwa-empty">${state.rwa.loading?"Loading CMC asset coverage…":"No matching tokenized assets. Try another search or filter."}</div>`;
   host.querySelectorAll("[data-rwa-id]").forEach(button=>button.addEventListener("click",()=>loadRwaAsset(button.dataset.rwaId)));
+  host.querySelectorAll(".rwa-asset-mark img").forEach(img=>img.addEventListener("error",()=>{const mark=img.parentElement;mark.textContent=mark.dataset.fallback||"?";},{once:true}));
 }
 async function loadRwa() {
   if(state.rwa.loading)return;
@@ -569,7 +585,7 @@ function renderRwaDetail() {
     .replace(/\s+/g," ")
     .trim()
     .slice(0,280);
-  const logoUrl=typeof about.logo==="string"&&about.logo.startsWith("https://")?about.logo:"";
+  const logoUrl=safeCmcLogo(about.logo);
   const assetMark=logoUrl?`<img src="${escapeHtml(logoUrl)}" alt="" loading="lazy" />`:escapeHtml((asset.symbol||asset.name||"R").slice(0,1));
   const tokenRows=tokens.map(token=>{
     const rawPrice=token.price;
@@ -1282,7 +1298,7 @@ function authForm(step="email"){
         if(settings.external&&settings.external.google===false){toast("Google sign-in is not enabled for this workspace yet. Use email code for now.",true);googleButton.disabled=false;return;}
       }
     }catch{}
-    const redirectTo=`${location.origin}/`;
+    const redirectTo=authRedirectTo();
     const authorizeUrl=`${state.auth.url.replace(/\/$/,"")}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectTo)}`;
     location.assign(authorizeUrl);
   });
@@ -1291,7 +1307,7 @@ function authForm(step="email"){
     try{
       if(isEmailStep){
         const address=new FormData(e.currentTarget).get("email").trim().toLowerCase();
-        await authRequest(`otp?redirect_to=${encodeURIComponent(`${location.origin}/`)}`,{email:address,create_user:true});
+        await authRequest(`otp?redirect_to=${encodeURIComponent(authRedirectTo())}`,{email:address,create_user:true});
         state.auth.pendingEmail=address;toast("Sign-in code sent.");authForm("code");
       }else{
         const code=new FormData(e.currentTarget).get("code").trim();
