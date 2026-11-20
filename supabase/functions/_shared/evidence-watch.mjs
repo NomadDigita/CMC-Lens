@@ -24,7 +24,7 @@ export function evaluateCondition({ condition, asset, mode, expectedAssetId, now
     return { outcome: "unknown", observedValue: null, freshness: "unknown", detail: "The returned asset ID did not match the thesis asset. No rule result was inferred." };
   }
 
-  const observedAtValue = isRwa ? asset.last_updated : asset.observedAt;
+  const observedAtValue = isRwa ? asset.last_updated ?? asset.quotes?.USD?.last_updated : asset.observedAt;
   const observedAt = typeof observedAtValue === "string" ? Date.parse(observedAtValue) : NaN;
   if (!Number.isFinite(observedAt)) {
     return { outcome: "unknown", observedValue: null, freshness: "missing", detail: "The CMC quote had no source timestamp. No rule result was inferred." };

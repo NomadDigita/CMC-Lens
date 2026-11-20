@@ -176,7 +176,7 @@ Deno.serve(async (req) => {
   const mode = market?.mode;
   const metric = condition.metric_key;
   const sourceObservedAt = isRwa
-    ? (typeof asset?.last_updated === "string" ? asset.last_updated : null)
+    ? (typeof (asset?.last_updated ?? asset?.quotes?.USD?.last_updated) === "string" ? (asset?.last_updated ?? asset?.quotes?.USD?.last_updated) : null)
     : (typeof asset?.observedAt === "string" ? asset.observedAt : null);
   const receipts = market?.sourceReceipts;
   const expectedEndpoint = isRwa ? "/v5/real-world-assets/quotes/latest" : "/v3/cryptocurrency/quotes/latest";

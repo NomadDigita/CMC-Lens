@@ -109,6 +109,17 @@ test("RWA token price range reads the USD quote average when the normalized fiel
   assert.equal(result.observedValue, 2);
 });
 
+test("RWA freshness reads the USD quote timestamp when the asset timestamp is absent", () => {
+  const { last_updated, ...asset } = rwaAsset;
+  const result = evaluateCondition({
+    condition: { metric_key: "rwa_price_coverage_pct", operator: "gte", threshold: 75 },
+    asset: { ...asset, quotes: { USD: { average_tokenized_price: 100, last_updated } } },
+    mode: "live", expectedAssetId: "rwa:9", now, receiptValid: true,
+  });
+  assert.equal(result.outcome, "met");
+  assert.equal(result.freshness, "fresh");
+});
+
 test("RWA issuer share groups positive token volumes by issuer", () => {
   const result = evaluateCondition({
     condition: { metric_key: "rwa_top_issuer_volume_share_pct", operator: "gt", threshold: 55 },
