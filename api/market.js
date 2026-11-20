@@ -69,7 +69,7 @@ function receiptRows(data){
       if(Array.isArray(data[key]))return data[key];
     }
     if(data.id!==undefined||data.rwa_id!==undefined)return [data];
-    return Object.values(data).filter(item=>item&&typeof item==="object"&&(item.id!==undefined||item.rwa_id!==undefined));
+    return Object.values(data).filter(item=>item&&typeof item==="object"&&(item.id!==undefined||item.rwa_id!==undefined||Array.isArray(item.quotes)));
   }
   return [];
 }
