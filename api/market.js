@@ -347,7 +347,7 @@ async function liveOverview(receiptSink=[]) {
 }
 
 async function liveRwaList(receiptSink=[]) {
-  const cached=getCached("rwa-list-v1",5*60*1000);
+  const cached=getCached("rwa-list-v2",5*60*1000);
   if(cached){
     const receipts=cachedSourceReceipts(cached.sourceReceipts||[]);
     receiptSink.push(...receipts);
@@ -355,10 +355,27 @@ async function liveRwaList(receiptSink=[]) {
   }
   const sourceReceipts=[];
   const data=await cmc("/v5/real-world-assets/assets/list",{start:1,limit:100,convert:"USD"},9000,sourceReceipts);
-  const result={assets:Array.isArray(data?.rwa_assets)?data.rwa_assets:[],total:Number(data?.total_size)||0,hasMore:data?.has_more===true};
+  const assets=Array.isArray(data?.rwa_assets)?data.rwa_assets:[];
+  let metadata=[];
+  const ids=assets.map(asset=>String(asset?.rwa_id||"")).filter(id=>/^\d{1,12}$/.test(id));
+  if(ids.length){
+    try{
+      const info=await cmc("/v5/real-world-assets/info",{rwa_id:ids.join(",")},9000,sourceReceipts);
+      metadata=Array.isArray(info?.rwa_assets)?info.rwa_assets:[];
+    }catch{
+      // Keep the market catalog usable if CMC metadata is temporarily unavailable.
+    }
+  }
+  const metadataById=new Map(metadata.map(item=>[String(item?.rwa_id||""),item]));
+  const enrichedAssets=assets.map(asset=>{
+    const info=metadataById.get(String(asset?.rwa_id||""));
+    const logo=info?.about?.logo;
+    return typeof logo==="string"&&logo.startsWith("https://")?{...asset,logo}:asset;
+  });
+  const result={assets:enrichedAssets,total:Number(data?.total_size)||0,hasMore:data?.has_more===true};
   result.sourceReceipts=sourceReceipts;
   receiptSink.push(...sourceReceipts);
-  setCached("rwa-list-v1",result);
+  setCached("rwa-list-v2",result);
   return result;
 }
 
@@ -516,7 +533,7 @@ module.exports = async function handler(req, res) {
   try {
     if (view === "rwa") {
       const result=await liveRwaList(sourceReceipts);
-      return reply(res,200,{mode:"live",retrievedAt:new Date().toISOString(),source:{provider:"CoinMarketCap",endpoint:"/v5/real-world-assets/assets/list",attribution:"Data provided by CoinMarketCap.com"},...result,sourceReceipts});
+      return reply(res,200,{mode:"live",retrievedAt:new Date().toISOString(),source:{provider:"CoinMarketCap",endpoints:["/v5/real-world-assets/assets/list","/v5/real-world-assets/info"],attribution:"Data provided by CoinMarketCap.com"},...result,sourceReceipts});
     }
     if (view === "rwa-asset") {
       const id=String(req.query.id||"");

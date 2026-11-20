@@ -35,6 +35,7 @@ For each returned RWA asset, CMC Lens derives four descriptive observations from
 
 Each thesis baseline and follow-up snapshot stores these derived fields alongside the issuer rows and source receipts. The method is descriptive: it is not a market-quality score, underlying-market liquidity estimate, redemption assessment, parity check, or arbitrage signal. Freshness is displayed from CMC's aggregate asset timestamp; the API response does not provide a per-token timestamp for each issuer row, so CMC Lens does not imply per-instrument freshness.
 
+The RWA catalog requests up to 100 underlyings from `/v5/real-world-assets/assets/list`, then requests `/v5/real-world-assets/info` for the returned numeric IDs to attach CMC-hosted underlying logos. Metadata failure is isolated: quote rows still render with a symbol fallback. The catalog response and source receipts identify both endpoints. Catalog totals describe the provider response; they are not a claim that every listed underlying has a token or usable quote.
 ## Adapter contract
 
 Each adapter method returns a normalized envelope:

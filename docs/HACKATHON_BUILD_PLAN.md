@@ -52,6 +52,7 @@ The CMC announcement notes that per-track weights appear on the DoraHacks Tracks
 
 All calls run server-side using the existing `CMC_PRO_API_KEY`. Never place the key in browser code, screenshots, public logs, or Git history. Cache list and detail payloads to avoid repeated calls; expose endpoint and request receipts in the existing source-inspection workflow.
 
+The RWA catalog requests up to 100 underlyings, then batches a metadata lookup to display CMC-hosted underlying logos. If that lookup fails, the catalog still renders with symbol fallbacks. Enriched catalog responses are cached for five minutes.
 ## Work sequence
 
 1. **Production UI fixes:** render official CMC token logos with safe letter fallbacks; correct sentiment-label wrapping; make BTC dominance indicator follow the live value.
