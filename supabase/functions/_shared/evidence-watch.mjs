@@ -3,7 +3,11 @@ export function evaluateCondition({ condition, asset, mode, expectedAssetId, now
   const operator = condition?.operator;
   const thresholdValue = condition?.threshold;
   const threshold = thresholdValue === null || thresholdValue === undefined || thresholdValue === "" ? NaN : Number(thresholdValue);
-  const supportedMetric = ["change_24h_pct", "market_cap_usd"].includes(metricKey);
+  const cryptoMetrics = ["change_24h_pct", "market_cap_usd"];
+  const rwaMetrics = ["rwa_price_coverage_pct", "rwa_price_range_pct", "rwa_top_issuer_volume_share_pct"];
+  const expectedRwaId = String(expectedAssetId || "").replace(/^rwa:/, "");
+  const isRwa = String(expectedAssetId || "").startsWith("rwa:");
+  const supportedMetric = isRwa ? rwaMetrics.includes(metricKey) : cryptoMetrics.includes(metricKey);
   const supportedOperator = ["lt", "lte", "gt", "gte"].includes(operator);
 
   if (!supportedMetric || !supportedOperator || !Number.isFinite(threshold)) {
@@ -15,11 +19,13 @@ export function evaluateCondition({ condition, asset, mode, expectedAssetId, now
   if (mode !== "live" || !asset) {
     return { outcome: "unknown", observedValue: null, freshness: "unavailable", detail: "Fresh CoinMarketCap evidence was unavailable; no rule result was inferred." };
   }
-  if (String(asset.id || "") !== String(expectedAssetId || "")) {
+  const returnedAssetId = isRwa ? String(asset.rwa_id || "") : String(asset.id || "");
+  if (returnedAssetId !== expectedRwaId) {
     return { outcome: "unknown", observedValue: null, freshness: "unknown", detail: "The returned asset ID did not match the thesis asset. No rule result was inferred." };
   }
 
-  const observedAt = typeof asset.observedAt === "string" ? Date.parse(asset.observedAt) : NaN;
+  const observedAtValue = isRwa ? asset.last_updated : asset.observedAt;
+  const observedAt = typeof observedAtValue === "string" ? Date.parse(observedAtValue) : NaN;
   if (!Number.isFinite(observedAt)) {
     return { outcome: "unknown", observedValue: null, freshness: "missing", detail: "The CMC quote had no source timestamp. No rule result was inferred." };
   }
@@ -30,7 +36,34 @@ export function evaluateCondition({ condition, asset, mode, expectedAssetId, now
     return { outcome: "unknown", observedValue: null, freshness: "unavailable", detail: "The source receipt could not verify a successful or cached CMC quote. No rule result was inferred." };
   }
 
-  const raw = metricKey === "change_24h_pct" ? asset.change24h : asset.marketCap;
+  let raw;
+  let coverage = "complete";
+  if (!isRwa) {
+    raw = metricKey === "change_24h_pct" ? asset.change24h : asset.marketCap;
+  } else {
+    const tokens = Array.isArray(asset.tokens) ? asset.tokens : [];
+    const numeric = value => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value));
+    const prices = tokens.map(token => token?.price).filter(numeric).map(Number);
+    const volumes = new Map();
+    for (const token of tokens) {
+      const issuer = String(token?.issuer_name || "").trim();
+      const volume = token?.volume_24h;
+      if (!issuer || !numeric(volume) || Number(volume) <= 0) continue;
+      volumes.set(issuer, (volumes.get(issuer) || 0) + Number(volume));
+    }
+    if (metricKey === "rwa_price_coverage_pct") {
+      coverage = tokens.length ? (prices.length === tokens.length ? "complete" : "partial") : "unavailable";
+      raw = tokens.length ? prices.length / tokens.length * 100 : null;
+    } else if (metricKey === "rwa_price_range_pct") {
+      const average = asset.average_tokenized_price;
+      coverage = prices.length >= 2 && numeric(average) && Number(average) > 0 ? (prices.length === tokens.length ? "complete" : "partial") : "unavailable";
+      raw = prices.length >= 2 && numeric(average) && Number(average) > 0 ? (Math.max(...prices) - Math.min(...prices)) / Number(average) * 100 : null;
+    } else {
+      const totalVolume = [...volumes.values()].reduce((sum, value) => sum + value, 0);
+      coverage = totalVolume > 0 ? "complete" : "unavailable";
+      raw = totalVolume > 0 ? Math.max(...volumes.values()) / totalVolume * 100 : null;
+    }
+  }
   const observedValue = raw === null || raw === undefined || raw === "" || !Number.isFinite(Number(raw)) ? null : Number(raw);
   if (observedValue === null) {
     return { outcome: "unknown", observedValue: null, freshness: "missing", detail: "The CMC quote did not contain this metric. Missing and zero are distinct; no rule result was inferred." };
@@ -43,6 +76,7 @@ export function evaluateCondition({ condition, asset, mode, expectedAssetId, now
     outcome: passed ? "met" : "not_met",
     observedValue,
     freshness: "fresh",
-    detail: "Live CMC quote compared with the saved threshold using " + operator + ". This result adds context; it does not explain the cause of a move.",
+    coverage,
+    detail: (isRwa ? "Live CMC tokenized-market evidence" : "Live CMC quote") + " compared with the saved threshold using " + operator + ". This result adds context; it does not explain the cause of a move.",
   };
 }
