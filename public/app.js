@@ -255,7 +255,7 @@ function render() {
   const btcAsset = state.data.assets.find(a => a.symbol === "BTC");
   const narrative = document.getElementById("breadth-narrative");
   const btcMove = hasNumericValue(btcAsset?.change24h) ? "Bitcoin is "+(Number(btcAsset.change24h)>=0?"up":"down")+" <b>"+Math.abs(Number(btcAsset.change24h)).toFixed(2)+"%</b>, while " : "";
-  narrative.innerHTML = !breadthAvailable ? "Market breadth is unavailable in this response." : btcMove+"<b>"+breadthCount+" of "+breadthTotal+"</b> covered assets are advancing; "+(declining===null?"declines unavailable":declining+" declining")+", "+(flat===null?"flat count unavailable":flat+" flat")+", "+(missing===null?"missing count unavailable":missing+" missing")+" ("+(coverage===null?"coverage unavailable":coverage.toFixed(0)+"% coverage")+"). Breadth adds context to the move; it does not identify its cause."; 
+  narrative.innerHTML = !breadthAvailable ? "Market breadth is unavailable in this response." : btcMove+"<b>"+breadthCount+" of "+breadthTotal+"</b> covered assets are advancing; "+(declining===null?"declines unavailable":declining+" declining")+", "+(flat===null?"flat count unavailable":flat+" flat")+", "+(missing===null?"missing count unavailable":missing+" missing")+" ("+(coverage===null?"coverage unavailable":coverage.toFixed(0)+"% coverage")+"). Breadth adds context to the move; it does not identify its cause.";
   document.getElementById("breadth-method").textContent = breadthAvailable ? "Positive 24h change · "+breadthTotal+" covered / "+universe+" queried "+(state.data.mode==="live"?"CMC assets":"illustrative demo assets") : "No usable asset coverage in this response";
   document.getElementById("market-timestamp").textContent = state.data.mode === "live" && state.data.retrievedAt
     ? `Retrieved ${new Date(state.data.retrievedAt).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"})}` : "Illustrative demo snapshot";
@@ -586,8 +586,9 @@ function renderRwaDetail() {
     .replace(/\s+/g," ")
     .trim()
     .slice(0,280);
-  const logoUrl=safeCmcLogo(about.logo);
-  const assetMark=logoUrl?`<img src="${escapeHtml(logoUrl)}" alt="" loading="lazy" />`:escapeHtml((asset.symbol||asset.name||"R").slice(0,1));
+  const logoUrl=safeCmcLogo(about.logo)||safeCmcLogo(asset.logo);
+  const logoTitle=asset.logo_source==="cmc_tracked_token"?"CMC logo for a tracked tokenized instrument":"CoinMarketCap underlying logo";
+  const assetMark=logoUrl?`<img src="${escapeHtml(logoUrl)}" alt="" title="${logoTitle}" loading="lazy" decoding="async" />`:escapeHtml((asset.symbol||asset.name||"R").slice(0,1));
   const tokenRows=tokens.map(token=>{
     const rawPrice=token.price;
     const price=rawPrice===null||rawPrice===undefined||rawPrice===""?null:Number(rawPrice);
