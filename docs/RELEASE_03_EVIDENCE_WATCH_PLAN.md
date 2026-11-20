@@ -1,6 +1,6 @@
 # Release 3 Plan — Evidence Watch
 
-**Status:** Crypto MVP shipped; RWA rules are implemented in the current working tree and still need release verification
+**Status:** Crypto MVP and RWA Evidence Watch shipped; authenticated end-to-end verification remains pending
 **Product goal:** Let researchers define observable conditions for an existing thesis and see when fresh CMC evidence meets them.
 
 ## Why this release
@@ -66,7 +66,8 @@ No social or news interpretation, synthetic metric, AI-generated trade call, or 
 
 ## Current repo checkpoint · November 20, 2026
 
-- The working tree adds three RWA checks: priced-token coverage, price range against CMC's tokenized average, and largest issuer share of positive reported token volume. Partial price sets and unattributed positive volume remain unknown for rules that need complete coverage.
-- The RWA rule editor and check history are present in `public/app.js`; each result now records the method, endpoint, source time, retrieval time, coverage, and freshness.
-- Supabase project `cmc-lens` is healthy and has `evaluate-thesis-condition` active at version 3. That deployed version supports the RWA rule family, but does not yet include the current local `issuer_id` grouping and incomplete-price safeguards. Deploy only after the reliability review is complete.
-- Repository changes are still local and uncommitted. No claim is made here that the current branch or deployment has passed the remaining reliability checks.
+- PR #41 is merged into `main` (merge commit `4049b4e`). It adds three RWA checks: priced-token coverage, price range against CMC's tokenized average, and largest issuer share of positive reported token volume. Partial price sets and unattributed positive volume remain unknown where complete coverage is required.
+- The RWA rule editor and check history are in `public/app.js`; results record the method, endpoint, source time, retrieval time, coverage, and freshness. Token-volume attribution groups by stable `issuer_id`; source receipts retain CMC list, info, and quote endpoint provenance.
+- The evaluator separates source freshness from evidence completeness: incomplete evidence can be `unknown` with `partial` coverage while its observation is still `fresh`. Narrow RWA detail panels use a compact readable token-row layout.
+- The 18 repository tests passed before merge. Supabase project `cmc-lens` is healthy; `evaluate-thesis-condition` is active at version 4 with JWT verification enabled. Vercel production deployment for merge commit `4049b4e` is `READY`.
+- Production review confirms live RWA data and coverage metrics. It also found token labels clipped at standard desktop width; a responsive fallback is prepared in the release follow-up and must be checked after deployment. Remaining verification: complete an authenticated production thesis evaluation and signed-in visual pass. Submission proof remains pending: sanitized real request/response, demo recording, X post, and verified DoraHacks submission/registration state are not yet recorded.

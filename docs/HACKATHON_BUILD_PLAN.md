@@ -59,8 +59,8 @@ The RWA catalog requests up to 100 underlyings, then batches metadata and quote 
 2. **RWA API service — implemented:** list and detail routes validate IDs, cache data, expose receipts, and return labelled demo data when live credentials are absent.
 3. **RWA Desk — implemented:** searchable underlying-to-issuer explorer with asset filters, coverage summaries, dispersion context, and phone layouts.
 4. **Research memory — implemented:** RWA thesis baselines and later reviews preserve issuer and market-quality snapshots without rewriting prior evidence.
-5. **Evidence Watch extension — in progress:** RWA coverage, price-range, and issuer-volume rules are implemented in the working tree. Finish reliability review, then deploy the updated Edge Function and verify the live path.
-6. **Reliability — next:** verify live and demo API shapes, missing metadata, failed logo images, partial issuer attribution, stale quotes, API limits, and empty token sets; preserve existing market, compare, and thesis flows.
+5. **Evidence Watch extension — shipped:** RWA coverage, price-range, and issuer-volume rules are merged in PR #41. Source receipts, stable issuer grouping, partial-coverage handling, and the narrow detail-panel layout are included. The evaluator is deployed as Supabase function version 4; its active deployment was verified.
+6. **Reliability — in progress:** the code-level RWA evidence tests pass, and the production Vercel deployment is ready. A production review found token labels clipped in the detail panel at standard desktop width; a responsive fallback is prepared in the release follow-up. Complete a signed-in end-to-end thesis check and recheck the deployed detail layout; verify live and demo API shapes, missing metadata, failed logo images, partial issuer attribution, stale quotes, API limits, and empty token sets while preserving existing market, compare, and thesis flows.
 7. **Submission proof — pending:** capture a sanitized real request/response, record a short demo, and prepare the required X post and DoraHacks fields. Keep registration and submission state unconfirmed until checked on the public event page.
 
 ## Product boundaries
