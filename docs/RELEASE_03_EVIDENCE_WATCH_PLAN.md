@@ -1,6 +1,6 @@
 # Release 3 Plan — Evidence Watch
 
-**Status:** Planned; implementation begins after review inbox and Google OAuth are verified  
+**Status:** MVP implementation in progress after the review inbox shipped  
 **Product goal:** Let researchers define observable conditions for an existing thesis and see when fresh CMC evidence meets them.
 
 ## Why this release
@@ -9,7 +9,7 @@ A thesis already stores the question, baseline, review date, and a written condi
 
 ## User flow
 
-1. A researcher opens a thesis and adds one or more rules using named CMC metrics, an operator, a threshold, and an effect label: strengthen, weaken, or invalidate.
+1. In the first release, a researcher adds one crypto quote rule per thesis using an allowlisted CMC metric, operator, threshold, and effect label: strengthen, weaken, or invalidate. Multi-rule theses and RWA rules follow after this slice is verified.
 2. The UI explains the metric, units, source coverage, and whether that metric is available for the selected asset type.
 3. A check runs only after a user refresh or when a review is opened. Each rule returns **met**, **not met**, or **unknown**. Missing fields, stale data, failed upstream calls, and unsupported metrics return unknown.
 4. Each result shows the measured value, threshold, source endpoint, source observation time, retrieval time, coverage, and method.
@@ -30,7 +30,7 @@ No social or news interpretation, synthetic metric, AI-generated trade call, or 
 ## Data and security design
 
 - Reuse `thesis_conditions` for the user's rule definition only after verifying its existing constraints and RLS policies.
-- Add an append-only `thesis_condition_events` table for results: owner, thesis, condition, outcome, observed value, threshold, rule version, source provider and endpoint, source time, capture time, coverage, and minimized source receipt.
+- Add an append-only `thesis_condition_events` table for results: owner, thesis, condition, idempotency key, outcome, observed value, saved rule snapshot, source provider and endpoint, source time, evaluation time, coverage/freshness, and minimized redacted receipt. Authenticated users may read their own events; only the trusted Edge Function writes them.
 - Enforce owner access with RLS. A server evaluation endpoint must verify the Supabase user and thesis ownership before requesting CMC data.
 - Never put the CMC API key in the browser or store raw provider payloads, request headers, or credentials in an event.
 - Start with user-triggered checks. Evaluate scheduled Vercel jobs only after API credit limits, free-tier cron constraints, idempotency, and retry behavior have been verified.
@@ -50,7 +50,7 @@ No social or news interpretation, synthetic metric, AI-generated trade call, or 
 1. Audit the live schema, RLS, auth callback, CMC endpoint access, caching, and existing local/cloud sync behavior.
 2. Finalize the rule model and migration; review RLS and insert-only event policy.
 3. Implement deterministic validators and unit-level edge cases for nulls, zero values, stale timestamps, wrong asset IDs, and provider failures.
-4. Build the rule editor and event history in the thesis detail view.
+4. Build the one-rule editor and append-only check history in the thesis detail view; preserve legacy qualitative condition text and sync pause state.
 5. Add an authenticated evaluation route with safe parameter allow-lists, rate limits, CMC receipts, and no secret-bearing errors.
 6. Exercise crypto, RWA, partial-coverage, demo, unavailable, signed-out, and account-switch paths.
 7. Verify accessible desktop/mobile layouts and both themes in the live Vercel deployment.
