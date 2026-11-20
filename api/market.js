@@ -128,6 +128,35 @@ function quoteFor(item) {
   return item?.quote?.USD || {};
 }
 
+function rwaRows(data) {
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.rwa_assets)) return data.rwa_assets;
+  if (data && typeof data === "object") {
+    if (data.rwa_id !== undefined) return [data];
+    return Object.values(data).filter(item => item && typeof item === "object" && item.rwa_id !== undefined);
+  }
+  return [];
+}
+
+function bestRwaTokenLogo(asset) {
+  const tokens=Array.isArray(asset?.tokens)?asset.tokens:[];
+  const token=tokens.filter(item=>/^\d{1,12}$/.test(String(item?.crypto_id||"")))
+    .sort((a,b)=>(Number(b?.volume_24h)||0)-(Number(a?.volume_24h)||0))[0];
+  if (!token) return null;
+  return {url:`https://s2.coinmarketcap.com/static/img/coins/64x64/${token.crypto_id}.png`,source:"cmc_tracked_token"};
+}
+
+function officialRwaLogo(info, asset) {
+  const candidate=info?.about?.logo;
+  if (typeof candidate === "string") {
+    try {
+      const url=new URL(candidate);
+      if (url.protocol === "https:" && url.hostname === "s2.coinmarketcap.com") return {url:url.href,source:"cmc_underlying_metadata"};
+    } catch {}
+  }
+  return bestRwaTokenLogo(asset);
+}
+
 const CATEGORY_TAGS = new Map([
   ["meme", "Meme"], ["memes", "Meme"], ["memecoin", "Meme"], ["memecoins", "Meme"],
   ["gaming", "Gaming"], ["gamefi", "Gaming"], ["play-to-earn", "Gaming"],
@@ -353,7 +382,7 @@ async function liveOverview(receiptSink=[]) {
 }
 
 async function liveRwaList(receiptSink=[]) {
-  const cached=getCached("rwa-list-v3",5*60*1000);
+  const cached=getCached("rwa-list-v4",5*60*1000);
   if(cached){
     const receipts=cachedSourceReceipts(cached.sourceReceipts||[]);
     receiptSink.push(...receipts);
@@ -361,27 +390,30 @@ async function liveRwaList(receiptSink=[]) {
   }
   const sourceReceipts=[];
   const data=await cmc("/v5/real-world-assets/assets/list",{start:1,limit:100,convert:"USD"},9000,sourceReceipts);
-  const assets=Array.isArray(data?.rwa_assets)?data.rwa_assets:[];
+  const assets=rwaRows(data);
   let metadata=[];
+  let tokenized=[];
   const ids=assets.map(asset=>String(asset?.rwa_id||"")).filter(id=>/^\d{1,12}$/.test(id));
   if(ids.length){
-    try{
-      const info=await cmc("/v5/real-world-assets/info",{rwa_id:ids.join(",")},9000,sourceReceipts);
-      metadata=Array.isArray(info?.rwa_assets)?info.rwa_assets:[];
-    }catch{
-      // Keep the market catalog usable if CMC metadata is temporarily unavailable.
-    }
+    const [infoResult,quoteResult]=await Promise.allSettled([
+      cmc("/v5/real-world-assets/info",{rwa_id:ids.join(",")},9000,sourceReceipts),
+      cmc("/v5/real-world-assets/quotes/latest",{rwa_id:ids.join(","),convert:"USD"},9000,sourceReceipts)
+    ]);
+    if(infoResult.status==="fulfilled")metadata=rwaRows(infoResult.value);
+    if(quoteResult.status==="fulfilled")tokenized=rwaRows(quoteResult.value);
   }
   const metadataById=new Map(metadata.map(item=>[String(item?.rwa_id||""),item]));
+  const tokenizedById=new Map(tokenized.map(item=>[String(item?.rwa_id||""),item]));
   const enrichedAssets=assets.map(asset=>{
     const info=metadataById.get(String(asset?.rwa_id||""));
-    const logo=info?.about?.logo;
-    return typeof logo==="string"&&logo.startsWith("https://")?{...asset,logo}:asset;
+    const tokenizedAsset=tokenizedById.get(String(asset?.rwa_id||""));
+    const logo=officialRwaLogo(info,tokenizedAsset);
+    return logo?{...asset,logo:logo.url,logo_source:logo.source}:asset;
   });
   const result={assets:enrichedAssets,total:Number(data?.total_size)||0,hasMore:data?.has_more===true};
   result.sourceReceipts=sourceReceipts;
   receiptSink.push(...sourceReceipts);
-  setCached("rwa-list-v3",result);
+  setCached("rwa-list-v4",result);
   return result;
 }
 
@@ -398,9 +430,11 @@ async function liveRwaAsset(id,receiptSink=[]) {
     cmc("/v5/real-world-assets/quotes/latest",{rwa_id:id,convert:"USD"},9000,sourceReceipts),
     cmc("/v5/real-world-assets/info",{rwa_id:id},9000,sourceReceipts)
   ]);
-  const asset=Array.isArray(quotes?.rwa_assets)?quotes.rwa_assets[0]:null;
-  const info=Array.isArray(metadata?.rwa_assets)?metadata.rwa_assets[0]:null;
+  const asset=rwaRows(quotes)[0]||null;
+  const info=rwaRows(metadata)[0]||null;
   if(!asset)return null;
+  const logo=officialRwaLogo(info,asset);
+  if(logo){asset.logo=logo.url;asset.logo_source=logo.source;}
   const result={asset,metadata:info,sourceReceipts};
   receiptSink.push(...sourceReceipts);
   setCached(cacheKey,result);
@@ -539,7 +573,7 @@ module.exports = async function handler(req, res) {
   try {
     if (view === "rwa") {
       const result=await liveRwaList(sourceReceipts);
-      return reply(res,200,{mode:"live",retrievedAt:new Date().toISOString(),source:{provider:"CoinMarketCap",endpoints:["/v5/real-world-assets/assets/list","/v5/real-world-assets/info"],attribution:"Data provided by CoinMarketCap.com"},...result,sourceReceipts});
+      return reply(res,200,{mode:"live",retrievedAt:new Date().toISOString(),source:{provider:"CoinMarketCap",endpoints:["/v5/real-world-assets/assets/list","/v5/real-world-assets/quotes/latest","/v5/real-world-assets/info"],attribution:"Data provided by CoinMarketCap.com"},...result,sourceReceipts});
     }
     if (view === "rwa-asset") {
       const id=String(req.query.id||"");
