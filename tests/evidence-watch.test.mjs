@@ -98,6 +98,17 @@ test("RWA token price range is measured against the CMC tokenized average", () =
   assert.equal(result.observedValue, 2);
 });
 
+test("RWA token price range reads the USD quote average when the normalized field is absent", () => {
+  const { average_tokenized_price, ...asset } = rwaAsset;
+  const result = evaluateCondition({
+    condition: { metric_key: "rwa_price_range_pct", operator: "gte", threshold: 2 },
+    asset: { ...asset, quotes: { USD: { average_tokenized_price: average_tokenized_price } } },
+    mode: "live", expectedAssetId: "rwa:9", now, receiptValid: true,
+  });
+  assert.equal(result.outcome, "met");
+  assert.equal(result.observedValue, 2);
+});
+
 test("RWA issuer share groups positive token volumes by issuer", () => {
   const result = evaluateCondition({
     condition: { metric_key: "rwa_top_issuer_volume_share_pct", operator: "gt", threshold: 55 },

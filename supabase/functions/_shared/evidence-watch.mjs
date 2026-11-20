@@ -62,7 +62,7 @@ export function evaluateCondition({ condition, asset, mode, expectedAssetId, now
       coverage = tokens.length ? (prices.length === tokens.length ? "complete" : "partial") : "unavailable";
       raw = tokens.length ? prices.length / tokens.length * 100 : null;
     } else if (metricKey === "rwa_price_range_pct") {
-      const average = asset.average_tokenized_price;
+      const average = asset.average_tokenized_price ?? asset.quotes?.USD?.average_tokenized_price;
       coverage = prices.length >= 2 && numeric(average) && Number(average) > 0 ? (prices.length === tokens.length ? "complete" : "partial") : "unavailable";
       raw = prices.length >= 2 && numeric(average) && Number(average) > 0 ? (Math.max(...prices) - Math.min(...prices)) / Number(average) * 100 : null;
     } else {
