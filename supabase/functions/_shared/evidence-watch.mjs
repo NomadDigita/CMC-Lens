@@ -67,6 +67,12 @@ export function evaluateCondition({ condition, asset, mode, expectedAssetId, now
       raw = prices.length >= 2 && numeric(average) && Number(average) > 0 ? (Math.max(...prices) - Math.min(...prices)) / Number(average) * 100 : null;
     } else {
       coverage = totalPositiveVolume > 0 ? (unattributedPositiveVolume > 0 ? "partial" : "complete") : "unavailable";
+      if (unattributedPositiveVolume > 0) {
+        return {
+          outcome: "unknown", observedValue: null, freshness: "missing", coverage,
+          detail: "Some positive CMC token volume has no issuer attribution. Issuer concentration cannot be determined from this partial coverage.",
+        };
+      }
       raw = totalPositiveVolume > 0 && volumes.size ? Math.max(...volumes.values()) / totalPositiveVolume * 100 : null;
     }
   }
