@@ -64,7 +64,13 @@ function safeReceiptParams(params={}){
 
 function receiptRows(data){
   if(Array.isArray(data))return data;
-  if(data&&typeof data==="object")return Object.values(data);
+  if(data&&typeof data==="object"){
+    for(const key of ["rwa_assets","data","items","results"]){
+      if(Array.isArray(data[key]))return data[key];
+    }
+    if(data.id!==undefined||data.rwa_id!==undefined)return [data];
+    return Object.values(data).filter(item=>item&&typeof item==="object"&&(item.id!==undefined||item.rwa_id!==undefined||Array.isArray(item.quotes)));
+  }
   return [];
 }
 
@@ -84,6 +90,9 @@ function responseSummary(path,data){
   if(path==="/v3/cryptocurrency/quotes/latest")return {matchedAssets:rows.length,assets:rows.slice(0,5).map(row=>({id:String(row.id||""),symbol:row.symbol||"",price:finiteMetric(quoteFor(row).price),change24h:finiteMetric(quoteFor(row).percent_change_24h)}))};
   if(path==="/v3/cryptocurrency/listings/latest")return {returnedAssets:rows.length,assets:rows.slice(0,5).map(row=>({id:String(row.id||""),symbol:row.symbol||""}))};
   if(path==="/v1/cryptocurrency/map")return {matchedAssets:rows.length,assets:rows.slice(0,5).map(row=>({id:String(row.id||""),symbol:row.symbol||""}))};
+  if(path==="/v5/real-world-assets/assets/list")return {returnedAssets:rows.length,assets:rows.slice(0,5).map(row=>({rwaId:String(row.rwa_id||""),symbol:row.symbol||"",hasTokens:row.has_tokens===true}))};
+  if(path==="/v5/real-world-assets/quotes/latest")return {matchedAssets:rows.length,assets:rows.slice(0,5).map(row=>({rwaId:String(row.rwa_id||""),symbol:row.symbol||"",tokenCount:Array.isArray(row.tokens)?row.tokens.length:0,averageTokenizedPrice:finiteMetric(row.average_tokenized_price??row.quotes?.[0]?.average_tokenized_price)}))};
+  if(path==="/v5/real-world-assets/info")return {matchedAssets:rows.length,assets:rows.slice(0,5).map(row=>({rwaId:String(row.rwa_id||""),symbol:row.symbol||"",hasLogo:typeof row.about?.logo==="string"}))};
   return {returnedRecords:rows.length};
 }
 

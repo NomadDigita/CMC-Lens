@@ -1,6 +1,6 @@
 # Release 3 Plan — Evidence Watch
 
-**Status:** MVP implementation in progress after the review inbox shipped  
+**Status:** Crypto MVP shipped; RWA rules are implemented in the current working tree and still need release verification
 **Product goal:** Let researchers define observable conditions for an existing thesis and see when fresh CMC evidence meets them.
 
 ## Why this release
@@ -63,3 +63,10 @@ No social or news interpretation, synthetic metric, AI-generated trade call, or 
 - Baselines and earlier evaluation events remain immutable.
 - Cross-user reads and writes are rejected by RLS and endpoint ownership checks.
 - User wording and interpretation remain user-authored; the product makes no prediction or execution decision.
+
+## Current repo checkpoint · November 20, 2026
+
+- The working tree adds three RWA checks: priced-token coverage, price range against CMC's tokenized average, and largest issuer share of positive reported token volume. Partial price sets and unattributed positive volume remain unknown for rules that need complete coverage.
+- The RWA rule editor and check history are present in `public/app.js`; each result now records the method, endpoint, source time, retrieval time, coverage, and freshness.
+- Supabase project `cmc-lens` is healthy and has `evaluate-thesis-condition` active at version 3. That deployed version supports the RWA rule family, but does not yet include the current local `issuer_id` grouping and incomplete-price safeguards. Deploy only after the reliability review is complete.
+- Repository changes are still local and uncommitted. No claim is made here that the current branch or deployment has passed the remaining reliability checks.

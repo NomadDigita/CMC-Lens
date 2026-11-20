@@ -66,6 +66,16 @@ function safeReceipt(receipts, provider, endpoint) {
   };
 }
 
+function metricMethod(metricKey) {
+  return ({
+    change_24h_pct: "Compare CMC's reported 24-hour percentage change with the saved threshold.",
+    market_cap_usd: "Compare CMC's reported market capitalization in USD with the saved threshold.",
+    rwa_price_coverage_pct: "Numeric token prices divided by the CMC-returned token rows, multiplied by 100.",
+    rwa_price_range_pct: "Highest minus lowest returned token price, divided by CMC's tokenized average and multiplied by 100; all returned instruments must have prices.",
+    rwa_top_issuer_volume_share_pct: "Largest issuer's positive returned 24-hour token volume divided by all positive returned 24-hour token volume, multiplied by 100; every positive volume must have issuer attribution.",
+  } as Record<string, string>)[metricKey] || "No method is available for this rule.";
+}
+
 Deno.serve(async (req) => {
   const origin = req.headers.get("origin");
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(origin) });
@@ -203,6 +213,7 @@ Deno.serve(async (req) => {
     rule_snapshot: {
       metricKey: condition.metric_key,
       assetKind: isRwa ? "rwa" : "crypto",
+      method: metricMethod(condition.metric_key),
       operator: condition.operator,
       threshold,
       unit: condition.unit || expectedUnit,

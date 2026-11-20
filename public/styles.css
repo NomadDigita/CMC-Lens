@@ -313,7 +313,7 @@ html[data-theme="light"] .primary-metric{background:radial-gradient(ellipse at 9
 .rwa-price small,.rwa-volume small,.rwa-issuer-count small{font-size:8px;text-transform:none;letter-spacing:0;font-family:var(--sans);font-weight:400}
 .rwa-issuer-count{color:var(--lime)}
 .rwa-empty{padding:24px 12px;text-align:center;color:var(--muted);font-size:11px}
-.rwa-detail{min-height:440px;overflow:hidden;background:radial-gradient(ellipse at 95% 0%,color-mix(in srgb,var(--blue) 9%,var(--surface)),var(--surface) 42%)}
+.rwa-detail{min-height:440px;overflow:hidden;container-type:inline-size;background:radial-gradient(ellipse at 95% 0%,color-mix(in srgb,var(--blue) 9%,var(--surface)),var(--surface) 42%)}
 .rwa-empty-detail{display:flex;flex-direction:column;align-items:flex-start;justify-content:center;min-height:400px;padding:10px 8px}
 .rwa-orbit{display:grid;place-items:center;width:64px;height:64px;margin-bottom:24px;border:1px solid var(--line);border-radius:50%;color:var(--lime);font-size:28px;box-shadow:0 0 36px color-mix(in srgb,var(--lime) 12%,transparent)}
 .rwa-empty-detail h2{margin:9px 0;font:500 25px var(--display);letter-spacing:-.5px}
@@ -341,6 +341,11 @@ html[data-theme="light"] .primary-metric{background:radial-gradient(ellipse at 9
 .rwa-token-name strong,.rwa-token-data strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9px;font-weight:600}
 .rwa-token-name small,.rwa-token-data small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font:8px var(--mono)}
 .rwa-token-data small{font-family:var(--sans)}
+.rwa-dispersion-track{position:relative;display:block;width:min(100%,116px);height:8px;margin-top:2px;border-radius:99px;background:linear-gradient(90deg,color-mix(in srgb,var(--blue) 60%,var(--surface-3)),var(--surface-3) 47%,color-mix(in srgb,var(--lime) 35%,var(--surface-3)) 53%,var(--surface-3));isolation:isolate}
+.rwa-dispersion-track::before{position:absolute;top:-2px;bottom:-2px;left:50%;width:1px;background:var(--text-2);content:"";opacity:.55}
+.rwa-dispersion-track i{position:absolute;top:50%;z-index:1;width:7px;height:7px;transform:translate(-50%,-50%);border:1px solid var(--surface);border-radius:50%;background:var(--text-2);box-shadow:0 0 0 2px color-mix(in srgb,var(--surface) 70%,transparent)}
+.rwa-dispersion-track i.above{background:var(--lime)}
+.rwa-dispersion-track i.below{background:var(--blue)}
 .rwa-token-issuer{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-2);font-size:9px}
 .rwa-market-note{display:flex;gap:9px;margin-top:17px;padding:11px;border:1px solid var(--line-soft);border-radius:9px;background:color-mix(in srgb,var(--bg) 45%,transparent)}
 .rwa-market-note .method-mark{flex:none}
@@ -375,6 +380,16 @@ html[data-theme="light"] .primary-metric{background:radial-gradient(ellipse at 9
 .rwa-quality-comparison>div{display:grid;gap:5px;min-width:0;padding:9px;border:1px solid var(--line-soft);border-radius:8px;background:var(--surface-2)}
 .rwa-quality-comparison span{overflow-wrap:anywhere;color:var(--text-2);font-size:9px;line-height:1.45}
 .rwa-quality-comparison i{padding:0 3px;color:var(--lime);font-style:normal}
+@container (max-width:520px){
+  .rwa-token-head{display:none}
+  .rwa-token{grid-template-columns:24px minmax(0,1fr) minmax(0,1fr);grid-template-areas:"icon name name" ". price volume" ". issuer issuer";gap:7px;padding:11px 6px}
+  .rwa-token> :nth-child(1){grid-area:icon}
+  .rwa-token> :nth-child(2){grid-area:name}
+  .rwa-token> :nth-child(3){grid-area:price}
+  .rwa-token> :nth-child(4){grid-area:volume}
+  .rwa-token> :nth-child(5){grid-area:issuer}
+  .rwa-token-icon{width:22px;height:22px}
+}
 .rwa-footer{align-items:flex-start;gap:16px;line-height:1.5}
 @media(max-width:1120px){.rwa-workspace{grid-template-columns:minmax(0,1fr)}.rwa-detail{min-height:320px}.rwa-empty-detail{min-height:280px}}
 @media(max-width:760px){
@@ -390,10 +405,8 @@ html[data-theme="light"] .primary-metric{background:radial-gradient(ellipse at 9
   .rwa-underlying{grid-area:asset;align-self:center}
   .rwa-price{grid-area:price}.rwa-volume{grid-area:volume}.rwa-issuer-count{grid-area:issuer}
   .rwa-token-head{display:none}
-  .rwa-token{grid-template-columns:24px minmax(0,1fr) minmax(0,1fr);gap:7px}
+  .rwa-token{grid-template-columns:24px minmax(0,1fr) minmax(0,1fr);grid-template-areas:"icon name name" ". price volume" ". issuer issuer";gap:7px}
   .rwa-token-icon{display:grid;width:22px;height:22px}
-  .rwa-token-name{grid-column:2 / -1}
-  .rwa-token-issuer{grid-column:2 / -1}
   .rwa-capture-actions .primary-button{width:100%;justify-content:center}
   .rwa-quality{padding:11px}
   .rwa-quality-metrics{grid-template-columns:1fr 1fr}

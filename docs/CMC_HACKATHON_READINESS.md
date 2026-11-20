@@ -1,6 +1,7 @@
 # CMC API Hackathon Readiness
 
-**Last checked:** November 19, 2026  
+**Last checked:** November 20, 2026
+
 **Event:** [Build with CMC: API Hackathon, Round 2](https://coinmarketcap.com/api/ja/resources/api-hackathon-2026-11/)  
 **Submission window:** November 18–December 9, 2026; closes December 9 at 23:59 UTC  
 **Recommended track:** Real World Assets
@@ -26,7 +27,7 @@ The public repo, live demo, named endpoints, and redacted live receipts are avai
 
 CMC Lens is not a generic price dashboard. It helps an independent researcher ask whether a move is broad or asset-specific, preserve the exact CMC IDs and observations behind a comparison, record the question and conditions that would change their view, then append later reviews without rewriting the original evidence.
 
-**Primary track rationale:** Real World Assets directly matches the new CMC RWA endpoints and issuer explorer. Track selection remains to be made in the DoraHacks form. The official CMC page provides the overall rubric (30 work, 25 usefulness, 20 API use, 15 code/docs, 10 presentation); it says per-track weightings appear on DoraHacks, which have not been verified here.
+**Primary track rationale:** Real World Assets directly matches the new CMC RWA endpoints and issuer explorer. Track selection remains to be made in the DoraHacks form. The official CMC page provides the overall rubric (30 work, 25 usefulness, 20 API use, 15 code/docs, 10 presentation); track-specific weightings still need verification in the DoraHacks Tracks tab.
 
 ## CMC API endpoints used
 
@@ -73,7 +74,7 @@ Use [DEMO_RUNBOOK.md](DEMO_RUNBOOK.md) for the walkthrough and recording outline
 - [x] Live production call and redacted endpoint/status/count evidence checked on November 19.
 - [x] CMC API usefulness and observed limitations documented.
 - [ ] Confirm event registration and CMC account-email match.
-- [ ] Select Data and Visualisation in the DoraHacks submission.
+- [ ] Select Real World Assets in the DoraHacks submission.
 - [ ] Record and publish the demo video.
 - [ ] Create the public DoraHacks BUIDL submission and verify its live page.
 - [ ] Publish an X post linking the BUIDL page and video with #BuildwithCMC.
