@@ -129,15 +129,24 @@ Deno.serve(async (req) => {
     .maybeSingle();
   if (duplicate) return json({ event: eventView(duplicate), cooldown: false }, 200, origin);
 
-  const { data: recent } = await admin
-    .from("thesis_condition_events")
-    .select("*")
-    .eq("owner_id", user.id)
-    .eq("condition_id", conditionId)
-    .order("evaluated_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (recent && Date.now() - Date.parse(recent.evaluated_at) < CHECK_COOLDOWN_MS) return json({ event: eventView(recent), cooldown: true }, 200, origin);
+  const { data: reserved, error: reservationError } = await admin.rpc("reserve_thesis_condition_check", {
+    p_owner_id: user.id,
+    p_condition_id: conditionId,
+    p_cooldown_seconds: Math.ceil(CHECK_COOLDOWN_MS / 1000),
+  });
+  if (reservationError) return json({ error: "COOLDOWN_RESERVATION_FAILED" }, 500, origin);
+  if (!reserved) {
+    const { data: recent } = await admin
+      .from("thesis_condition_events")
+      .select("*")
+      .eq("owner_id", user.id)
+      .eq("condition_id", conditionId)
+      .order("evaluated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (recent) return json({ event: eventView(recent), cooldown: true }, 200, origin);
+    return json({ error: "CHECK_COOLDOWN", message: "A check is already in progress. Wait one minute and try again." }, 429, origin);
+  }
 
   let market = null;
   try {
