@@ -48,7 +48,9 @@ export function evaluateCondition({ condition, asset, mode, expectedAssetId, now
     let totalPositiveVolume = 0;
     let unattributedPositiveVolume = 0;
     for (const token of tokens) {
-      const issuer = String(token?.issuer_name || "").trim();
+      const issuerId = String(token?.issuer_id ?? "").trim();
+      const issuerName = String(token?.issuer_name || "").trim();
+      const issuer = issuerId ? "id:" + issuerId : issuerName ? "name:" + issuerName.toLowerCase() : "";
       const volume = token?.volume_24h;
       if (!numeric(volume) || Number(volume) <= 0) continue;
       totalPositiveVolume += Number(volume);
@@ -64,12 +66,18 @@ export function evaluateCondition({ condition, asset, mode, expectedAssetId, now
     } else if (metricKey === "rwa_price_range_pct") {
       const average = asset.average_tokenized_price ?? asset.quotes?.USD?.average_tokenized_price;
       coverage = prices.length >= 2 && numeric(average) && Number(average) > 0 ? (prices.length === tokens.length ? "complete" : "partial") : "unavailable";
+      if (prices.length >= 2 && numeric(average) && Number(average) > 0 && prices.length !== tokens.length) {
+        return {
+          outcome: "unknown", observedValue: null, freshness: "fresh", coverage,
+          detail: "Some CMC token prices are missing. Price range is not evaluated from a partial token set.",
+        };
+      }
       raw = prices.length >= 2 && numeric(average) && Number(average) > 0 ? (Math.max(...prices) - Math.min(...prices)) / Number(average) * 100 : null;
     } else {
       coverage = totalPositiveVolume > 0 ? (unattributedPositiveVolume > 0 ? "partial" : "complete") : "unavailable";
       if (unattributedPositiveVolume > 0) {
         return {
-          outcome: "unknown", observedValue: null, freshness: "missing", coverage,
+          outcome: "unknown", observedValue: null, freshness: "fresh", coverage,
           detail: "Some positive CMC token volume has no issuer attribution. Issuer concentration cannot be determined from this partial coverage.",
         };
       }
