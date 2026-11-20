@@ -114,8 +114,43 @@ function renderThesisCards() {
   document.getElementById("filter-review-count").textContent = String(review);
   document.getElementById("filter-reviewed-count").textContent = String(state.theses.filter(t => t.status === "reviewed").length);
   renderThesesPage();
+  renderReviewReminderBadge();
 }
 
+function renderReviewReminderBadge() {
+  const button=document.getElementById("notification-button");
+  const badge=button?.querySelector(".notification-indicator");
+  if(!button||!badge)return;
+  const now=Date.now();
+  const due=state.theses.filter(t=>t.status!=="reviewed"&&Number.isFinite(Date.parse(t.reviewAt))&&Date.parse(t.reviewAt)<=now).length;
+  badge.textContent=due?(due>9?"9+":String(due)):"";
+  button.dataset.dueCount=String(due);
+  button.setAttribute("aria-label",due?`Research reminders, ${due} ${due===1?"review":"reviews"} due`:"Research reminders");
+}
+function reviewInboxGroup(title,items,type,now) {
+  const rows=items.map(t=>{
+    const dueAt=Date.parse(t.reviewAt||"");
+    const reviewedAt=t.lastReviewedAt||(t.reviews||[]).at(-1)?.date||t.updatedAt||t.createdAt;
+    let timing="";
+    if(type==="due"){const days=Math.floor(Math.max(0,now-dueAt)/86400000);timing=days? `${days}d overdue`:"Due today";}
+    else if(type==="upcoming"){const days=Math.max(1,Math.ceil((dueAt-now)/86400000));timing=`In ${days}d`;}
+    else timing=`Reviewed ${safeDate(reviewedAt)}`;
+    const provider=t.baselineSnapshot?.sourceProvider==="coinmarketcap"?"CMC evidence":"Demo baseline";
+    return `<button class="review-inbox-item" type="button" data-review-thesis="${escapeHtml(t.id)}"><span class="review-inbox-copy"><span class="panel-kicker">${escapeHtml(t.assetSymbol||"MARKET")} · ${escapeHtml(provider)}</span><strong>${escapeHtml(t.title||"Untitled thesis")}</strong><small>${type==="reviewed"?`Last updated ${escapeHtml(safeDate(reviewedAt))}`:`Review date ${escapeHtml(safeDate(t.reviewAt))}`}</small></span><span class="review-inbox-time ${type==="due"?"is-due":""}">${escapeHtml(timing)} <b>→</b></span></button>`;
+  }).join("");
+  return `<section class="review-inbox-group"><div class="review-inbox-group-head"><h3>${escapeHtml(title)}</h3><span>${items.length}</span></div>${rows||`<div class="review-inbox-empty">${type==="due"?"No reviews are due.":type==="upcoming"?"No upcoming review dates.":"Reviewed records will appear here."}</div>`}</section>`;
+}
+function openReviewInbox() {
+  const now=Date.now();
+  const open=state.theses.filter(t=>t.status!=="reviewed"&&Number.isFinite(Date.parse(t.reviewAt)));
+  const due=open.filter(t=>Date.parse(t.reviewAt)<=now).sort((a,b)=>Date.parse(a.reviewAt)-Date.parse(b.reviewAt));
+  const upcoming=open.filter(t=>Date.parse(t.reviewAt)>now).sort((a,b)=>Date.parse(a.reviewAt)-Date.parse(b.reviewAt));
+  const reviewed=state.theses.filter(t=>t.status==="reviewed").sort((a,b)=>Date.parse(b.lastReviewedAt||b.updatedAt||b.createdAt)-Date.parse(a.lastReviewedAt||a.updatedAt||a.createdAt)).slice(0,3);
+  const body=state.theses.length?`<div class="review-inbox-summary"><div><small>NEEDS REVIEW</small><strong>${due.length}</strong></div><div><small>UPCOMING</small><strong>${upcoming.length}</strong></div><div><small>REVIEWED</small><strong>${state.theses.filter(t=>t.status==="reviewed").length}</strong></div></div><div class="review-inbox-list">${reviewInboxGroup("Needs your review",due,"due",now)}${reviewInboxGroup("Coming up",upcoming,"upcoming",now)}${reviewInboxGroup("Recently reviewed",reviewed,"reviewed",now)}</div>`:`<div class="review-inbox-first"><span class="method-mark">ƒ</span><h3>Your research review queue starts with a thesis.</h3><p>Save a dated view and its evidence. CMC Lens will keep its review date here so you can return without relying on memory.</p><button class="primary-button" id="review-inbox-new">Start a thesis <span>→</span></button></div>`;
+  openModal(`<div class="modal-head"><div><div class="panel-kicker">RESEARCH WORKFLOW</div><h2 id="modal-title">Review inbox.</h2><p>Review dates are checkpoints, not price alerts. Open any record to inspect its original evidence.</p></div><button id="modal-close" class="modal-close" aria-label="Close">×</button></div><div class="review-inbox">${body}<p class="review-inbox-note">Records stay in this browser until you connect a workspace. Live CMC observations and demo baselines are labeled separately.</p></div>`);
+  document.querySelectorAll("[data-review-thesis]").forEach(button=>button.addEventListener("click",()=>{const id=button.dataset.reviewThesis;closeModal();showThesis(id);}));
+  document.getElementById("review-inbox-new")?.addEventListener("click",()=>{closeModal();thesisForm();});
+}
 function renderThesesPage() {
   const list = [...state.theses].sort((a,b) => new Date(b.createdAt)-new Date(a.createdAt)).filter(t => {
     if (state.activeFilter === "open") return t.status !== "reviewed" && new Date(t.reviewAt) > new Date();
@@ -1418,7 +1453,7 @@ function setup() {
   document.querySelectorAll("[data-period]").forEach(el=>el.addEventListener("click",()=>{state.comparePeriod=el.dataset.period;document.querySelectorAll("[data-period]").forEach(x=>x.classList.toggle("selected",x===el));renderCompare();loadCompareHistory();}));
   document.querySelectorAll(".info-dot").forEach(el=>el.title=el.dataset.tip);
   document.getElementById("open-breadth").addEventListener("click",()=>switchView("compare"));
-  document.getElementById("notification-button").addEventListener("click",()=>{const due=state.theses.filter(t=>t.status!=="reviewed"&&new Date(t.reviewAt)<=new Date()).length;toast(due?`${due} ${due===1?"thesis is":"theses are"} ready for review.`:"No thesis reviews are due right now.");});
+  document.getElementById("notification-button").addEventListener("click",openReviewInbox);
   document.getElementById("search-trigger").setAttribute("aria-label","Search assets and research");
   document.querySelectorAll(".panel-more,.chart-menu,.profile-more").forEach(el=>el.addEventListener("click",()=>toast("More workspace controls will be available with saved user settings.")));
   setTheme(document.documentElement.dataset.theme||"dark");
