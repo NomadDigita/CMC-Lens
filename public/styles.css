@@ -390,6 +390,19 @@ html[data-theme="light"] .primary-metric{background:radial-gradient(ellipse at 9
   .rwa-token> :nth-child(5){grid-area:issuer}
   .rwa-token-icon{width:22px;height:22px}
 }
+/* The persistent app sidebar and catalog leave a narrow detail panel on
+   standard desktop viewports. Keep token names and issuer labels readable
+   there too, even in browsers where container queries are unavailable. */
+@media(max-width:1500px){
+  .rwa-token-head{display:none}
+  .rwa-token{grid-template-columns:24px minmax(0,1fr) minmax(0,1fr);grid-template-areas:"icon name name" ". price volume" ". issuer issuer";gap:7px;padding:11px 6px}
+  .rwa-token> :nth-child(1){grid-area:icon}
+  .rwa-token> :nth-child(2){grid-area:name}
+  .rwa-token> :nth-child(3){grid-area:price}
+  .rwa-token> :nth-child(4){grid-area:volume}
+  .rwa-token> :nth-child(5){grid-area:issuer}
+  .rwa-token-icon{width:22px;height:22px}
+}
 .rwa-footer{align-items:flex-start;gap:16px;line-height:1.5}
 @media(max-width:1120px){.rwa-workspace{grid-template-columns:minmax(0,1fr)}.rwa-detail{min-height:320px}.rwa-empty-detail{min-height:280px}}
 @media(max-width:760px){
