@@ -489,3 +489,38 @@ html[data-theme="light"] .primary-metric{background:radial-gradient(ellipse at 9
 .watch-rule-form{padding-bottom:4px}
 .watch-rule-form .detail-note{margin:6px 0 0;font-size:11px}
 @media(max-width:600px){.watch-section{margin:16px 0;padding:14px}.watch-rule-card,.watch-rule-empty{padding:13px}.watch-rule-main>strong{font-size:15px}.watch-rule-actions{gap:6px}.watch-rule-actions .primary-button{width:100%;margin-left:0;justify-content:center}.watch-event{padding:11px}.watch-event-top{align-items:flex-start}}
+
+/* Give Explore a useful first step before the user knows what to search. */
+.explore-first-run{max-width:1000px;margin:clamp(38px,7vh,76px) 0 0;padding:24px 0 0;border-top:1px solid var(--line-soft)}
+.explore-first-run[hidden]{display:none}
+.explore-first-run-copy{max-width:500px}
+.explore-first-run-copy h2{margin:9px 0 6px;font:500 clamp(19px,2.1vw,25px)/1.2 var(--display);letter-spacing:-.55px;color:var(--text)}
+.explore-first-run-copy p{margin:0;color:var(--muted);font-size:11px;line-height:1.6}
+.explore-shortcuts{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:9px;margin-top:20px}
+.explore-shortcut{min-width:0;min-height:66px;display:flex;align-items:center;gap:10px;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:linear-gradient(145deg,color-mix(in srgb,var(--surface-2) 78%,transparent),var(--surface));text-align:left;cursor:pointer;transition:border-color .16s,background .16s,transform .16s}
+.explore-shortcut:hover{transform:translateY(-2px);border-color:color-mix(in srgb,var(--lime) 45%,var(--line));background:var(--surface-2)}
+.explore-shortcut:focus-visible{outline:2px solid var(--lime);outline-offset:2px}
+.explore-shortcut-mark{flex:none;width:32px;height:32px;display:grid;place-items:center;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--lime);font:500 15px var(--display)}
+.explore-shortcut:nth-child(2) .explore-shortcut-mark{color:var(--blue)}
+.explore-shortcut:nth-child(3) .explore-shortcut-mark{color:#b58cff}
+.explore-shortcut:nth-child(4) .explore-shortcut-mark{color:var(--text-2)}
+.explore-shortcut:nth-child(5) .explore-shortcut-mark{color:var(--orange)}
+.explore-shortcut-copy{display:grid;gap:4px;min-width:0;flex:1}
+.explore-shortcut-copy strong{overflow:hidden;color:var(--text);font-size:10px;font-weight:600;text-overflow:ellipsis;white-space:nowrap}
+.explore-shortcut-copy small{color:var(--muted);font:8px var(--mono);letter-spacing:.3px}
+.explore-shortcut-arrow{color:var(--quiet);font-size:13px;transition:color .16s,transform .16s}
+.explore-shortcut:hover .explore-shortcut-arrow{transform:translate(1px,-1px);color:var(--lime)}
+.explore-first-run~.empty-hint{margin-top:18px}
+@media(max-width:1000px){.explore-shortcuts{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:600px){.explore-first-run{margin-top:33px;padding-top:20px}.explore-shortcuts{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-top:15px}.explore-shortcut{min-height:60px;padding:9px}.explore-shortcut-mark{width:29px;height:29px}}
+@media(prefers-reduced-motion:reduce){.explore-shortcut,.explore-shortcut-arrow{transition:none}.explore-shortcut:hover{transform:none}}
+
+.asset-empty-state{display:flex;align-items:flex-start;gap:13px;padding:18px 16px;border:1px dashed var(--line);border-radius:10px;background:color-mix(in srgb,var(--surface) 82%,transparent)}
+.asset-empty-mark{width:32px;height:32px;flex:none;display:grid;place-items:center;border:1px solid var(--line);border-radius:9px;color:var(--muted);font-size:19px}
+.asset-empty-state strong{display:block;color:var(--text);font-size:11px;font-weight:600}
+.asset-empty-state p{margin:5px 0 10px;color:var(--muted);font-size:10px;line-height:1.55}
+.asset-clear-search{padding:0;border:0;background:none;color:var(--lime);font-size:10px;font-weight:600;text-align:left;cursor:pointer}
+.asset-clear-search:hover{text-decoration:underline;text-underline-offset:3px}
+.asset-clear-search:focus-visible{outline:2px solid var(--lime);outline-offset:3px;border-radius:2px}
+html[data-theme="light"] .asset-clear-search{color:#526c27}
+@media(max-width:600px){.asset-empty-state{padding:14px 12px;gap:10px}.asset-empty-mark{width:29px;height:29px}.asset-empty-state p{max-width:38ch}}
