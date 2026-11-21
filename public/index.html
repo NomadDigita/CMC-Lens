@@ -95,7 +95,23 @@
           <footer class="app-footer"><span>Research is a process, not a prediction.</span><span class="footer-attribution">Data provided by <a href="https://coinmarketcap.com/" target="_blank" rel="noreferrer">CoinMarketCap.com</a> <span id="footer-data-state">· demo values</span></span></footer>
         </section>
 
-        <section class="page-view simple-view" id="view-explore"><div class="page-heading"><div><div class="eyebrow"><span class="eyebrow-line"></span>ASSET RESEARCH</div><h1>Look closer.</h1><p class="heading-subtitle">Start with an asset. Keep the surrounding evidence in view.</p></div><button class="primary-button" id="explore-new-thesis">＋ Start a thesis</button></div><div class="explore-search"><span>⌕</span><input id="asset-search" placeholder="Search a name, symbol, or CMC ID" autocomplete="off"/><kbd>↵</kbd></div><div class="asset-results" id="asset-results"></div><div class="empty-hint">Search results use the CMC asset map when live API access is connected. Demo mode uses a small sample set.</div><footer class="app-footer"><span>Search fields may be incomplete or unavailable.</span><span class="footer-attribution">Data provided by <a href="https://coinmarketcap.com/" target="_blank" rel="noreferrer">CoinMarketCap.com</a></span></footer></section>
+        <section class="page-view simple-view" id="view-explore">
+          <div class="page-heading"><div><div class="eyebrow"><span class="eyebrow-line"></span>ASSET RESEARCH</div><h1>Look closer.</h1><p class="heading-subtitle">Start with an asset. Keep the surrounding evidence in view.</p></div><button class="primary-button" id="explore-new-thesis">＋ Start a thesis</button></div>
+          <div class="explore-search"><span aria-hidden="true">⌕</span><input id="asset-search" aria-label="Search CMC assets by name, symbol, or ID" aria-controls="asset-results" aria-describedby="asset-search-hint" placeholder="Search a name, symbol, or CMC ID" autocomplete="off"/><kbd aria-hidden="true">↵</kbd></div>
+          <div class="asset-results" id="asset-results" aria-live="polite"></div>
+          <section class="explore-first-run" id="explore-first-run" aria-labelledby="explore-first-run-title">
+            <div class="explore-first-run-copy"><span class="section-overline">A FEW PLACES TO BEGIN</span><h2 id="explore-first-run-title">Start with a familiar market.</h2><p>Open an asset dossier to see its latest CMC quote, 24-hour move, and peer context.</p></div>
+            <div class="explore-shortcuts" role="group" aria-label="Quick asset searches">
+              <button class="explore-shortcut" type="button" data-explore-query="Bitcoin"><span class="explore-shortcut-mark" aria-hidden="true">₿</span><span class="explore-shortcut-copy"><strong>Bitcoin</strong><small>BTC</small></span><span class="explore-shortcut-arrow" aria-hidden="true">↗</span></button>
+              <button class="explore-shortcut" type="button" data-explore-query="Ethereum"><span class="explore-shortcut-mark" aria-hidden="true">◆</span><span class="explore-shortcut-copy"><strong>Ethereum</strong><small>ETH</small></span><span class="explore-shortcut-arrow" aria-hidden="true">↗</span></button>
+              <button class="explore-shortcut" type="button" data-explore-query="Solana"><span class="explore-shortcut-mark" aria-hidden="true">≋</span><span class="explore-shortcut-copy"><strong>Solana</strong><small>SOL</small></span><span class="explore-shortcut-arrow" aria-hidden="true">↗</span></button>
+              <button class="explore-shortcut" type="button" data-explore-query="XRP"><span class="explore-shortcut-mark" aria-hidden="true">✕</span><span class="explore-shortcut-copy"><strong>XRP</strong><small>XRP</small></span><span class="explore-shortcut-arrow" aria-hidden="true">↗</span></button>
+              <button class="explore-shortcut" type="button" data-explore-query="BNB"><span class="explore-shortcut-mark" aria-hidden="true">◈</span><span class="explore-shortcut-copy"><strong>BNB</strong><small>BNB</small></span><span class="explore-shortcut-arrow" aria-hidden="true">↗</span></button>
+            </div>
+          </section>
+          <div class="empty-hint" id="asset-search-hint">Live search uses CoinMarketCap’s asset map; demo mode searches a small labelled sample.</div>
+          <footer class="app-footer"><span>Search fields may be incomplete or unavailable.</span><span class="footer-attribution">Data provided by <a href="https://coinmarketcap.com/" target="_blank" rel="noreferrer">CoinMarketCap.com</a></span></footer>
+        </section>
 
         <section class="page-view simple-view rwa-view" id="view-rwa">
           <div class="page-heading rwa-page-heading">
