@@ -678,13 +678,24 @@ function rwaThesisForm(payload) {
     state.theses.unshift(thesis);saveTheses();renderThesisCards();closeModal();toast(demo?"Issuer comparison saved as a clearly labeled demo baseline.":"Issuer comparison saved with a dated CMC evidence snapshot.");
   });
 }
+const mobileNavigationMedia=window.matchMedia("(max-width: 900px)");
+function setMobileNavigation(open) {
+  const sidebar=document.getElementById("sidebar");
+  const toggle=document.getElementById("mobile-menu");
+  const isOpen=Boolean(open&&mobileNavigationMedia.matches);
+  sidebar.classList.toggle("open",isOpen);
+  sidebar.inert=mobileNavigationMedia.matches&&!isOpen;
+  toggle.setAttribute("aria-expanded",String(isOpen));
+  toggle.setAttribute("aria-label",isOpen?"Close navigation":"Open navigation");
+}
+
 function switchView(view) {
   state.view = view;
   document.querySelectorAll(".page-view").forEach(el => el.classList.remove("active"));
   const target = document.getElementById(`view-${view}`); if (target) target.classList.add("active");
   document.querySelectorAll(".nav-item").forEach(el => el.classList.toggle("active", el.dataset.view === view));
   document.getElementById("breadcrumb-current").textContent = ({pulse:"Market pulse",explore:"Explore assets",compare:"Compare",atlas:"Market Atlas",rwa:"RWA desk",theses:"Thesis log",settings:"Settings"})[view] || "Workspace";
-  document.getElementById("sidebar").classList.remove("open");
+  setMobileNavigation(false);
   if (view === "compare") loadCompareHistory();
   if (view === "atlas") renderAtlas();
   if (view === "rwa" && !state.rwa.loading && (!state.rwa.loadedAt || Date.now()-state.rwa.loadedAt>60_000)) loadRwa();
@@ -1585,6 +1596,12 @@ function sourceReceiptMarkup(){
 }
 function setup() {
   const savedTheme=localStorage.getItem("cmc-lens-theme");if(savedTheme==="light"||savedTheme==="dark")document.documentElement.dataset.theme=savedTheme;
+  const sidebar=document.getElementById("sidebar"),mobileMenu=document.getElementById("mobile-menu");
+  setMobileNavigation(false);
+  mobileMenu.addEventListener("click",()=>setMobileNavigation(!sidebar.classList.contains("open")));
+  mobileNavigationMedia.addEventListener("change",()=>setMobileNavigation(false));
+  document.addEventListener("keydown",event=>{if(event.key==="Escape"&&mobileNavigationMedia.matches&&sidebar.classList.contains("open")){setMobileNavigation(false);mobileMenu.focus();}});
+  document.addEventListener("click",event=>{if(mobileNavigationMedia.matches&&sidebar.classList.contains("open")&&!sidebar.contains(event.target)&&!mobileMenu.contains(event.target))setMobileNavigation(false);});
   document.querySelectorAll("[data-view]").forEach(el=>el.addEventListener("click",()=>switchView(el.dataset.view)));
   document.getElementById("theme-toggle").addEventListener("click",()=>setTheme(document.documentElement.dataset.theme==="dark"?"light":"dark"));
   document.getElementById("rwa-refresh").addEventListener("click",()=>{state.rwa.loadedAt=0;loadRwa();});
