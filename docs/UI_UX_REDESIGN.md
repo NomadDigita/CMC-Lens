@@ -101,7 +101,7 @@ Auth acceptance requires: cancelled sign-in leaves the local workspace untouched
 - [x] Explore first-run search, one-click starters, and a recoverable no-results state (PR #44; preview reviewed at desktop width).
 - [x] Compare shared date axis and baseline, stable asset colors, explicit expected-quote coverage, missing-data gaps, and an accessible plotted-values table (PR #45; preview reviewed in dark and light themes).
 - [x] Market Atlas search by asset name, ticker, or CMC ID; search stays in sync across the map and accessible list (PR #47; exact numeric CMC ID matching in PR #48; preview reviewed with matching, no-match, and exact-ID queries).
-- [ ] Mobile navigation drawer announces its expanded state, removes closed links from keyboard navigation, and closes on Escape or outside click (in progress).
+- [x] Mobile navigation drawer announces its expanded state, removes closed links from keyboard navigation, and closes on Escape or outside click (PR #52).
 - [ ] Responsive review of Explore, Compare, Market Atlas, Thesis log, and Settings at 1440, 1024, 768, and 390 CSS pixels; Explore, Compare, Market Atlas, and Thesis log were reviewed near 779 CSS pixels after PR #49. Market Pulse, Compare, Market Atlas, and RWA desk were also reviewed around 454 CSS pixels; Settings was checked around 341 CSS pixels, including the scrolled drawer and route. Exact target widths and phone-width Explore/Thesis captures remain outstanding.
 - [ ] Supabase Google provider and Google OAuth callback allow-list configured and verified.
 - [ ] Browser review of OAuth cancellation, successful account sync, guest import, and sign-out.
