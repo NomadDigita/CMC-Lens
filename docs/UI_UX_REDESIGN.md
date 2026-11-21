@@ -98,6 +98,8 @@ Auth acceptance requires: cancelled sign-in leaves the local workspace untouched
 - [x] Market Pulse page title and interaction polish updated.
 - [x] Sign-in dialog offers Google OAuth and email code.
 - [x] README gets a centered product introduction and an original product illustration.
-- [ ] Screen-by-screen responsive review for all five views.
+- [x] Explore first-run search, one-click starters, and a recoverable no-results state (PR #44; preview reviewed at desktop width).
+- [x] Compare shared date axis and baseline, stable asset colors, explicit expected-quote coverage, missing-data gaps, and an accessible plotted-values table (PR #45; preview reviewed in dark and light themes).
+- [ ] Responsive review of all five planned views at 1440, 1024, 768, and 390 CSS pixels; phone-width browser capture is still outstanding.
 - [ ] Supabase Google provider and Google OAuth callback allow-list configured and verified.
 - [ ] Browser review of OAuth cancellation, successful account sync, guest import, and sign-out.
