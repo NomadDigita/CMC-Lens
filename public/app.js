@@ -346,7 +346,8 @@ function renderAtlas(){
   document.getElementById("atlas-data-state").textContent=state.data.mode==="live"?"· live CMC data":"· demo values";
   const filtered=all.filter(asset=>{
     const query=state.atlas.query.trim().toLowerCase();
-    if(query&&!String(asset.name||"").toLowerCase().includes(query)&&!String(asset.symbol||"").toLowerCase().includes(query)&&!String(asset.id||"").toLowerCase().includes(query))return false;
+    const exactId=String(asset.id||"").toLowerCase()===query;
+    if(query&&!String(asset.name||"").toLowerCase().includes(query)&&!String(asset.symbol||"").toLowerCase().includes(query)&&!exactId)return false;
     if(state.atlas.category!=="all"&&atlasCategory(asset)!==state.atlas.category)return false;
     if(state.atlas.hideStablecoins&&atlasIsStablecoin(asset))return false;
     const cap=Number(asset.marketCap);
