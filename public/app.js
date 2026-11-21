@@ -24,7 +24,7 @@ const state = {
   theses: startupTheses(),
   activeFilter: "all",
   comparePeriod: "7D",
-  compareSymbols: ["BTC", "ETH", "SOL"], compareAssetCache: {},
+  compareSymbols: ["BTC", "ETH", "SOL"], compareAssetCache: {}, compareAssetColors: {},
   comparePickerOpen: false,
   comparePickerQuery: "",
   historicalCache: {},
@@ -1092,7 +1092,12 @@ function renderComparePickerResults() {
 function renderCompare() {
   normalizeCompareSelections();
   const assets=state.compareSymbols.map(compareAssetBySelection).filter(Boolean);
-  const colors=["var(--lime)","var(--blue)","var(--orange)","var(--red)"];
+  const palette=["var(--lime)","var(--blue)","var(--orange)","var(--red)"];
+  const colors=assets.map(asset=>{
+    const id=String(asset.id);if(state.compareAssetColors[id])return state.compareAssetColors[id];
+    const used=new Set(assets.filter(item=>String(item.id)!==id&&state.compareAssetColors[String(item.id)]).map(item=>state.compareAssetColors[String(item.id)]));
+    const color=palette.find(candidate=>!used.has(candidate))||palette[0];state.compareAssetColors[id]=color;return color;
+  });
   const addDisabled=assets.length>=4?" disabled aria-disabled=\"true\"":"";
   const picker=state.comparePickerOpen?`<div class="compare-picker"><input id="compare-asset-search" aria-label="Search assets to compare" placeholder="Search name or symbol" value="${escapeHtml(state.comparePickerQuery)}" autocomplete="off"/><div id="compare-search-results" class="compare-picker-results"></div></div>`:"";
   document.getElementById("compare-assets").innerHTML=assets.map((a,i)=>`<span class="compare-chip" style="--chip:${colors[i]}"><i></i>${escapeHtml(a.symbol)}<button data-remove-asset-id="${escapeHtml(a.id)}" aria-label="Remove ${escapeHtml(a.symbol)}">×</button></span>`).join("")+`<button class="compare-chip" id="compare-add"${addDisabled}>＋ Add asset</button>`+picker;
@@ -1112,19 +1117,57 @@ function drawCompareChart(assets, colors) {
   const cached=state.historicalCache[key];
   if(state.data.mode==="live"&&!cached){
     host.innerHTML=`<div class="category-empty">${state.historyPending[key]?"Loading matched CMC history…":"Historical quotes are being prepared when you open this view."}</div>`;
+    document.getElementById("compare-window-meta").textContent=`${state.comparePeriod} selected window · USD quotes`;
+    document.getElementById("compare-x-axis").innerHTML="";document.getElementById("compare-data-access").innerHTML="";
     document.getElementById("compare-footnote").textContent="Live comparison uses CMC quotes. The chart appears only when the matching historical series is available.";
     return;
   }
   const series=state.data.mode==="live"?cached:assets.map((a,idx)=>({symbol:a.symbol,series:demoSeries(a,idx)}));
-  const all=series.flatMap(row=>row.series.map(p=>Number(p.price))).filter(Number.isFinite);
-  if(!all.length){host.innerHTML=`<div class="category-empty">No historical quotes are available for this selection and period.</div>`;return;}
-  const indexed=series.map(row=>({symbol:row.symbol,points:row.series.map(p=>Number(p.price)).filter(Number.isFinite).map(p=>row.series.length?p/(Number(row.series.find(q=>Number.isFinite(Number(q.price)))?.price)||p)*100:100)}));
-  const min=Math.min(...indexed.flatMap(row=>row.points));const max=Math.max(...indexed.flatMap(row=>row.points));const range=Math.max(0.01,max-min);
-  const lines=indexed.map((row,ai)=>{const pts=row.points.map((v,i)=>`${row.points.length>1?i/(row.points.length-1)*100:50},${66-(v-min)/range*56}`).join(" ");return `<polyline points="${pts}" fill="none" stroke="${colors[ai]}" stroke-width="2.25" vector-effect="non-scaling-stroke"/>`;}).join("");
-  host.innerHTML=`<svg viewBox="0 0 100 70" preserveAspectRatio="none" aria-label="${state.data.mode==="live"?"CMC historical relative performance":"Illustrative demo relative performance"}">${lines}</svg>`;
+  const days=Number.parseInt(state.comparePeriod,10)||7;
+  const byAsset=series.map(row=>{
+    const quotes=new Map();
+    for(const point of row.series||[]){const time=Date.parse(point.timestamp);const price=Number(point.price);if(!Number.isFinite(time)||!Number.isFinite(price)||price<=0)continue;const day=new Date(time).toISOString().slice(0,10);if(!quotes.has(day))quotes.set(day,{day,time,price});}
+    return {symbol:row.symbol,quotes};
+  });
+  const observedDays=[...new Set(byAsset.flatMap(row=>[...row.quotes.keys()]))].sort();
+  if(!observedDays.length){host.innerHTML=`<div class="category-empty">No historical quotes are available for this selection and period.</div>`;document.getElementById("compare-window-meta").textContent="Historical coverage unavailable";document.getElementById("compare-x-axis").innerHTML="";document.getElementById("compare-data-access").innerHTML="";document.getElementById("compare-footnote").textContent="No comparable observations were returned for this selection.";return;}
+  const endTime=Math.max(...byAsset.flatMap(row=>[...row.quotes.values()].map(point=>point.time)));
+  const startTime=endTime-days*86400000;
+  const windowDays=observedDays.filter(day=>{const time=Date.parse(`${day}T00:00:00Z`);return time>=startTime&&time<=endTime;});
+  const commonDays=windowDays.filter(day=>byAsset.every(row=>row.quotes.has(day)));
+  if(!commonDays.length){host.innerHTML=`<div class="category-empty">These assets have no shared historical quote to use as a common baseline. Remove an asset or try a different period.</div>`;document.getElementById("compare-window-meta").textContent=`${state.comparePeriod} selected window · no common baseline`;document.getElementById("compare-x-axis").innerHTML="";document.getElementById("compare-data-access").innerHTML="";document.getElementById("compare-footnote").textContent="A relative comparison needs at least one observed quote date for every selected asset.";return;}
+  const baselineDay=commonDays[0],baseline=byAsset.map(row=>row.quotes.get(baselineDay).price);
+  const indexed=byAsset.map((row,index)=>({symbol:row.symbol,points:[...row.quotes.values()].filter(point=>point.time>=startTime&&point.time<=endTime&&point.day>=baselineDay).sort((a,b)=>a.time-b.time).map(point=>({...point,value:point.price/baseline[index]*100}))}));
+  const values=indexed.flatMap(row=>row.points.map(point=>point.value)).concat(100);
+  const rawMin=Math.min(...values),rawMax=Math.max(...values),padding=Math.max((rawMax-rawMin)*.12,.5);
+  const min=rawMin-padding,max=rawMax+padding,range=max-min;
+  const x=time=>8+((time-startTime)/Math.max(1,endTime-startTime))*88;
+  const y=value=>8+(max-value)/range*62;
+  const ticks=Array.from({length:5},(_,i)=>max-(range*i/4));
+  const grid=ticks.map(value=>`<g><line x1="8" y1="${y(value).toFixed(2)}" x2="96" y2="${y(value).toFixed(2)}" stroke="var(--line-soft)" stroke-width=".8" vector-effect="non-scaling-stroke"/><text x="7" y="${(y(value)+1).toFixed(2)}" text-anchor="end" fill="var(--muted)" font-size="2.1">${value.toFixed(1)}</text></g>`).join("");
+  const baselineRule=`<line x1="8" y1="${y(100).toFixed(2)}" x2="96" y2="${y(100).toFixed(2)}" stroke="var(--text-2)" stroke-width=".8" stroke-dasharray="2 2" vector-effect="non-scaling-stroke" opacity=".6"/>`;
+  const lines=indexed.map((row,ai)=>{
+    const segments=[];let segment=[];let previous=null;
+    for(const point of row.points){if(previous&&point.time-previous.time>1.6*86400000){if(segment.length)segments.push(segment);segment=[];}segment.push(point);previous=point;}
+    if(segment.length)segments.push(segment);
+    return segments.map(points=>points.length>1?`<polyline points="${points.map(point=>`${x(point.time).toFixed(2)},${y(point.value).toFixed(2)}`).join(" ")}" fill="none" stroke="${colors[ai]}" stroke-width="1.8" vector-effect="non-scaling-stroke"/>`: `<circle cx="${x(points[0].time).toFixed(2)}" cy="${y(points[0].value).toFixed(2)}" r=".9" fill="${colors[ai]}"/>`).join("");
+  }).join("");
+  const firstLabel=new Date(startTime).toLocaleDateString([], {month:"short",day:"numeric"});
+  const baseLabel=new Date(`${baselineDay}T00:00:00Z`).toLocaleDateString([], {month:"short",day:"numeric",timeZone:"UTC"});
+  const endLabel=new Date(endTime).toLocaleDateString([], {month:"short",day:"numeric"});
+  const expectedCount=days+1,commonCount=commonDays.length,coverage=indexed.map(row=>`${row.symbol} ${row.points.length}/${expectedCount}`).join(" · ");
+  const baselinePosition=Math.max(8,Math.min(96,x(Date.parse(`${baselineDay}T00:00:00Z`))));
+  const description=`${state.data.mode==="live"?"CoinMarketCap":"Illustrative demo"} relative performance, indexed to 100 on ${baseLabel}. Dates use a shared time axis. Missing observations remain as gaps. ${coverage}.`;
+  host.innerHTML=`<svg viewBox="0 0 100 76" preserveAspectRatio="none" role="img" aria-labelledby="compare-chart-title compare-chart-desc"><title id="compare-chart-title">Relative performance over the selected ${state.comparePeriod} window</title><desc id="compare-chart-desc">${escapeHtml(description)}</desc>${grid}${baselineRule}${lines}</svg>`;
+  document.getElementById("compare-window-meta").innerHTML=`<span><strong>${escapeHtml(state.comparePeriod)}</strong> selected window</span><span>Shared baseline <strong>${escapeHtml(baseLabel)}</strong> · indexed to 100</span><span>${commonCount} of ${expectedCount} expected dates shared</span>`;
+  document.getElementById("compare-x-axis").innerHTML=`<span class="compare-axis-start">${escapeHtml(firstLabel)}</span><span class="compare-axis-baseline" style="left:${baselinePosition.toFixed(2)}%">Baseline · ${escapeHtml(baseLabel)}</span><span class="compare-axis-end">${escapeHtml(endLabel)}</span>`;
+  const daysForTable=windowDays;
+  const head=`<tr><th scope="col">Date</th>${indexed.map(row=>`<th scope="col">${escapeHtml(row.symbol)}</th>`).join("")}</tr>`;
+  const body=daysForTable.map(day=>`<tr><th scope="row">${escapeHtml(new Date(`${day}T00:00:00Z`).toLocaleDateString([], {month:"short",day:"numeric",timeZone:"UTC"}))}</th>${indexed.map((row,index)=>{const point=byAsset[index].quotes.get(day);return `<td>${point&&day>=baselineDay?`${(point.price/baseline[index]*100).toFixed(2)}`:"—"}</td>`;}).join("")}</tr>`).join("");
+  document.getElementById("compare-data-access").innerHTML=`<details class="compare-data-details"><summary>View plotted values</summary><div class="compare-data-scroll"><table><caption>${state.data.mode==="live"?"Daily CMC observations":"Illustrative demo observations"} indexed to 100 on ${escapeHtml(baseLabel)}. Missing quotes are shown as dashes.</caption><thead>${head}</thead><tbody>${body}</tbody></table></div></details>`;
   document.getElementById("compare-footnote").textContent=state.data.mode==="live"
-    ? `Indexed to 100 at the start of the ${state.comparePeriod} window. CMC historical quotes · retrieved ${new Date(cached[0]?.retrievedAt||Date.now()).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})}. Historical performance does not indicate future results.`
-    : "Illustrative demo series only. Live mode uses CMC historical quotes. Historical performance does not indicate future results.";
+    ? `CMC historical quotes · ${coverage} observed points · retrieved ${new Date(cached[0]?.retrievedAt||Date.now()).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})}. Missing observations are not connected. Historical performance does not indicate future results.`
+    : `Illustrative demo series only · ${coverage} observed points · shared baseline ${baseLabel}. Historical performance does not indicate future results.`;
 }
 
 function demoSeries(asset, index) {
