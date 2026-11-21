@@ -267,6 +267,8 @@ html[data-theme="light"] .primary-metric{background:radial-gradient(ellipse at 9
   .market-summary-row{gap:6px}
   .metric-card{min-height:143px}
   .cat-row{grid-template-columns:78px minmax(0,1fr) 32px}
+  .breadcrumbs>span:first-child,.breadcrumbs .crumb-sep{display:none}
+  .breadcrumbs strong{white-space:nowrap}
 }
 
 /* CMC Lens · tokenized real-world asset desk */
