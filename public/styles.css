@@ -529,6 +529,7 @@ html[data-theme="light"] .asset-clear-search{color:#526c27}
 .compare-window-meta>span{display:inline-flex;align-items:center;gap:5px}
 .compare-window-meta>span+span:before{content:"";width:3px;height:3px;margin-right:5px;border-radius:50%;background:var(--quiet)}
 .compare-window-meta strong{color:var(--text-2);font:500 9px var(--mono)}
+.compare-chart-title h2{color:var(--text)}
 .compare-chart{height:300px;margin:12px 0 0}
 .compare-chart svg{overflow:visible}
 .compare-x-axis{position:relative;height:14px;margin:-4px 0 12px;color:var(--muted);font:8px var(--mono)}
