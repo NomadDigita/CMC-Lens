@@ -1156,10 +1156,11 @@ function drawCompareChart(assets, colors) {
   const baseLabel=new Date(`${baselineDay}T00:00:00Z`).toLocaleDateString([], {month:"short",day:"numeric",timeZone:"UTC"});
   const endLabel=new Date(endTime).toLocaleDateString([], {month:"short",day:"numeric"});
   const commonCount=commonDays.length,coverage=indexed.map(row=>`${row.symbol} ${row.points.length}/${windowDays.length}`).join(" · ");
+  const baselinePosition=Math.max(8,Math.min(96,x(Date.parse(`${baselineDay}T00:00:00Z`))));
   const description=`${state.data.mode==="live"?"CoinMarketCap":"Illustrative demo"} relative performance, indexed to 100 on ${baseLabel}. Dates use a shared time axis. Missing observations remain as gaps. ${coverage}.`;
   host.innerHTML=`<svg viewBox="0 0 100 76" preserveAspectRatio="none" role="img" aria-labelledby="compare-chart-title compare-chart-desc"><title id="compare-chart-title">Relative performance over the selected ${state.comparePeriod} window</title><desc id="compare-chart-desc">${escapeHtml(description)}</desc>${grid}${baselineRule}${lines}</svg>`;
   document.getElementById("compare-window-meta").innerHTML=`<span><strong>${escapeHtml(state.comparePeriod)}</strong> selected window</span><span>Shared baseline <strong>${escapeHtml(baseLabel)}</strong> · indexed to 100</span><span>${commonCount} shared quote dates</span>`;
-  document.getElementById("compare-x-axis").innerHTML=`<span>${escapeHtml(firstLabel)}</span><span>Baseline · ${escapeHtml(baseLabel)}</span><span>${escapeHtml(endLabel)}</span>`;
+  document.getElementById("compare-x-axis").innerHTML=`<span class="compare-axis-start">${escapeHtml(firstLabel)}</span><span class="compare-axis-baseline" style="left:${baselinePosition.toFixed(2)}%">Baseline · ${escapeHtml(baseLabel)}</span><span class="compare-axis-end">${escapeHtml(endLabel)}</span>`;
   const daysForTable=windowDays;
   const head=`<tr><th scope="col">Date</th>${indexed.map(row=>`<th scope="col">${escapeHtml(row.symbol)}</th>`).join("")}</tr>`;
   const body=daysForTable.map(day=>`<tr><th scope="row">${escapeHtml(new Date(`${day}T00:00:00Z`).toLocaleDateString([], {month:"short",day:"numeric",timeZone:"UTC"}))}</th>${indexed.map((row,index)=>{const point=byAsset[index].quotes.get(day);return `<td>${point&&day>=baselineDay?`${(point.price/baseline[index]*100).toFixed(2)}`:"—"}</td>`;}).join("")}</tr>`).join("");
