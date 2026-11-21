@@ -29,7 +29,7 @@ const state = {
   comparePickerQuery: "",
   historicalCache: {},
   historyPending: {},
-  atlas: { category: "all", cap: "all", hideStablecoins: true, mode: "map", selected: [], activeId: null },
+  atlas: { category: "all", cap: "all", query: "", hideStablecoins: true, mode: "map", selected: [], activeId: null },
   currentAsset: null,
   rwa: { assets: [], selectedId: null, detail: null, filter: "all", query: "", mode: "demo", loading: false, loadedAt: 0 },
   auth: { configured: false, url: null, publishableKey: null, session: null, user: null, pendingEmail: null, syncing: false, syncRequested: false, syncEpoch: 0, sessionEpoch: 0, syncJob: null }
@@ -324,6 +324,8 @@ function renderAtlas(){
   const categorySelect=document.getElementById("atlas-category-filter");
   if(!categorySelect)return;
   const all=Array.isArray(state.data.assets)?state.data.assets:[];
+  const searchInput=document.getElementById("atlas-search");
+  if(searchInput&&searchInput.value!==state.atlas.query)searchInput.value=state.atlas.query;
   const known=[...new Set(all.map(atlasCategory))].sort((a,b)=>ATLAS_CATEGORY_LABELS.indexOf(a)-ATLAS_CATEGORY_LABELS.indexOf(b));
   const previousCategory=state.atlas.category;
   categorySelect.innerHTML='<option value="all">All categories</option>'+known.map(category=>'<option value="'+escapeHtml(category)+'">'+escapeHtml(category)+'</option>').join("");
@@ -343,6 +345,8 @@ function renderAtlas(){
   document.getElementById("atlas-asof").textContent=(state.data.mode==="live"?"CMC snapshot retrieved ":"Demo snapshot · ")+(asof?new Date(asof).toLocaleString(undefined,{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}):"time unavailable");
   document.getElementById("atlas-data-state").textContent=state.data.mode==="live"?"· live CMC data":"· demo values";
   const filtered=all.filter(asset=>{
+    const query=state.atlas.query.trim().toLowerCase();
+    if(query&&!String(asset.name||"").toLowerCase().includes(query)&&!String(asset.symbol||"").toLowerCase().includes(query)&&!String(asset.id||"").toLowerCase().includes(query))return false;
     if(state.atlas.category!=="all"&&atlasCategory(asset)!==state.atlas.category)return false;
     if(state.atlas.hideStablecoins&&atlasIsStablecoin(asset))return false;
     const cap=Number(asset.marketCap);
@@ -353,7 +357,7 @@ function renderAtlas(){
   });
   if(!filtered.some(asset=>String(asset.id)===String(state.atlas.activeId)))state.atlas.activeId=filtered[0]?String(filtered[0].id):null;
   const plotted=filtered.filter(asset=>hasNumericValue(asset.change24h)&&Number.isFinite(atlasRelativeChange(asset,all)));
-  document.getElementById("atlas-result-count").textContent=filtered.length+" assets · "+plotted.length+" with peer-relative coverage";
+  document.getElementById("atlas-result-count").textContent=state.atlas.query.trim()?filtered.length+" matches · "+plotted.length+" with peer-relative coverage":filtered.length+" assets · "+plotted.length+" with peer-relative coverage";
   const mapWrap=document.getElementById("atlas-map-wrap"),listWrap=document.getElementById("atlas-list-wrap");
   mapWrap.hidden=state.atlas.mode!=="map";listWrap.hidden=state.atlas.mode!=="list";
   document.getElementById("atlas-view-map").classList.toggle("selected",state.atlas.mode==="map");
@@ -386,7 +390,7 @@ function renderAtlas(){
   svg+='</svg>';
   document.getElementById("atlas-map").innerHTML=plotted.length?svg:'<div class="atlas-empty">No assets in this filtered set have both a reported 24-hour return and covered category peers. Switch category or use the accessible list.</div>';
   const list=document.getElementById("atlas-list");
-  if(!filtered.length)list.innerHTML='<div class="atlas-empty">No assets match the current filters. Clear a filter to see the market sample.</div>';
+  if(!filtered.length)list.innerHTML='<div class="atlas-empty">No assets match these filters. Try another name, ticker, or CMC ID, or clear a filter.</div>';
   else list.innerHTML=filtered.map(asset=>{
     const relative=atlasRelativeChange(asset,all),change=hasNumericValue(asset.change24h)?Number(asset.change24h):null;
     const selected=state.atlas.selected.includes(String(asset.id));
@@ -1593,6 +1597,7 @@ function setup() {
   document.querySelectorAll("[data-thesis-filter]").forEach(el=>el.addEventListener("click",()=>{state.activeFilter=el.dataset.thesisFilter;document.querySelectorAll("[data-thesis-filter]").forEach(x=>x.classList.toggle("selected",x===el));renderThesesPage();}));
   ["new-thesis","new-thesis-alt","explore-new-thesis","theses-new"].forEach(id=>document.getElementById(id).addEventListener("click",()=>thesisForm()));
   document.getElementById("compare-save-thesis").addEventListener("click",comparisonThesisForm);
+  document.getElementById("atlas-search").addEventListener("input",event=>{state.atlas.query=event.target.value;renderAtlas();});
   document.getElementById("atlas-category-filter").addEventListener("change",event=>{state.atlas.category=event.target.value;renderAtlas();});
   document.getElementById("atlas-cap-filter").addEventListener("change",event=>{state.atlas.cap=event.target.value;renderAtlas();});
   document.getElementById("atlas-hide-stablecoins").addEventListener("change",event=>{state.atlas.hideStablecoins=event.target.checked;renderAtlas();});

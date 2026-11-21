@@ -524,6 +524,11 @@ html[data-theme="light"] .primary-metric{background:radial-gradient(ellipse at 9
 .asset-clear-search:focus-visible{outline:2px solid var(--lime);outline-offset:3px;border-radius:2px}
 html[data-theme="light"] .asset-clear-search{color:#526c27}
 @media(max-width:600px){.asset-empty-state{padding:14px 12px;gap:10px}.asset-empty-mark{width:29px;height:29px}.asset-empty-state p{max-width:38ch}}
+.atlas-search-control{flex:1 1 190px;min-width:180px}
+.atlas-search-control input{width:100%;height:36px;padding:0 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);color:var(--text);font-size:11px;outline:0}
+.atlas-search-control input::placeholder{color:var(--quiet)}
+.atlas-search-control input:focus-visible{border-color:var(--lime);box-shadow:0 0 0 2px color-mix(in srgb,var(--lime) 18%,transparent)}
+.atlas-search-control input::-webkit-search-cancel-button{cursor:pointer}
 
 .compare-window-meta{display:flex;align-items:center;flex-wrap:wrap;gap:7px 16px;margin-top:15px;color:var(--muted);font-size:9px}
 .compare-window-meta>span{display:inline-flex;align-items:center;gap:5px}
